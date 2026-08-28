@@ -44,7 +44,28 @@ const createComment = async (req, res) => {
     });
   }
 };
+const getComments = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const comments = await Comment.find({ post: postId })
+      .populate("author", "name email role")
+      .sort({ createdAt: 1 });
+
+    res.status(200).json({
+      count: comments.length,
+      comments,
+    });
+  } catch (error) {
+    console.error("Get Comments Error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
 
 module.exports = {
   createComment,
+  getComments,
 };
