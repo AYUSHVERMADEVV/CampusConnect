@@ -131,10 +131,56 @@ const deletePost = async (req, res) => {
     });
   }
 };
+const updatePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, category } = req.body;
 
+    const post = await Post.findById(id);
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // Only post author or admin can update
+    const isAuthor =
+      post.author.toString() === req.user._id.toString();
+
+    const isAdmin = req.user.role === "admin";
+
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({
+        message: "Not authorized to update this post",
+      });
+    }
+
+    // Update only provided fields
+    if (title !== undefined) post.title = title;
+    if (content !== undefined) post.content = content;
+    if (category !== undefined) post.category = category;
+
+    await post.save();
+
+    await post.populate("author", "name email role");
+
+    res.status(200).json({
+      message: "Post updated successfully",
+      post,
+    });
+  } catch (error) {
+    console.error("Update Post Error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
 module.exports = {
   createPost,
   getPosts,
   toggleLikePost,
   deletePost,
+  updatePost,
 };
