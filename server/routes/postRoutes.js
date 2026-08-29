@@ -3,6 +3,7 @@ const express = require("express");
 const {
   createPost,
   getPosts,
+  getSinglePost,
   toggleLikePost,
   deletePost,
   updatePost
@@ -13,6 +14,8 @@ const router = express.Router();
 
 // Create a new post
 router.get("/", getPosts);
+// Get single post
+router.get("/:id", getSinglePost);
 router.post("/", protect, createPost);
 // Like / Unlike a post
 router.post("/:id/like", protect, toggleLikePost);
