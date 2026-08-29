@@ -1,5 +1,5 @@
 const Post = require("../models/Post");
-
+const Comment = require("../models/Comment");
 const createPost = async (req, res) => {
   try {
     const { title, content, category } = req.body;
@@ -91,9 +91,50 @@ const toggleLikePost = async (req, res) => {
     });
   }
 };
+const deletePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const post = await Post.findById(id);
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // Only post author or admin can delete
+    const isAuthor =
+      post.author.toString() === req.user._id.toString();
+
+    const isAdmin = req.user.role === "admin";
+
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({
+        message: "Not authorized to delete this post",
+      });
+    }
+
+    await Post.findByIdAndDelete(id);
+
+    // Delete all comments belonging to this post
+    await Comment.deleteMany({ post: id });
+
+    res.status(200).json({
+      message: "Post deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete Post Error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
 
 module.exports = {
   createPost,
   getPosts,
   toggleLikePost,
+  deletePost,
 };
