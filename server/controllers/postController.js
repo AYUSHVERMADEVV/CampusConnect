@@ -33,12 +33,24 @@ const createPost = async (req, res) => {
 };
 const getPosts = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const skip = (page - 1) * limit;
+
     const posts = await Post.find()
       .populate("author", "name email role")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const totalPosts = await Post.countDocuments();
 
     res.status(200).json({
-      count: posts.length,
+      page,
+      limit,
+      totalPosts,
+      totalPages: Math.ceil(totalPosts / limit),
       posts,
     });
   } catch (error) {
