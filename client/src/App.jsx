@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import API from "./api";
 import "./App.css";
+import "./auth.css";
 
 const Icon = ({ name, size = 20 }) => {
   const paths = {
@@ -106,6 +107,13 @@ const Icon = ({ name, size = 20 }) => {
         <path d="M5 12h14M13 6l6 6-6 6" />
       </>
     ),
+
+    logout: (
+      <>
+        <path d="M10 17l5-5-5-5M15 12H3" />
+        <path d="M21 19V5a2 2 0 0 0-2-2h-6" />
+      </>
+    ),
   };
 
   return (
@@ -133,6 +141,160 @@ const navItems = [
   ["bookmark", "Saved"],
 ];
 
+const readSession = () => {
+  const token = localStorage.getItem("token");
+  const savedUser = localStorage.getItem("user");
+
+  if (!token) return null;
+
+  try {
+    return { token, user: savedUser ? JSON.parse(savedUser) : null };
+  } catch {
+    localStorage.removeItem("user");
+    return { token, user: null };
+  }
+};
+
+function AuthScreen({ onAuthenticated }) {
+  const [mode, setMode] = useState(
+    window.location.hash === "#register" ? "register" : "login"
+  );
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    college: "",
+    branch: "",
+    year: "",
+  });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isRegistering = mode === "register";
+
+  const switchMode = (nextMode) => {
+    setError("");
+    setMode(nextMode);
+    window.location.hash = nextMode === "register" ? "register" : "login";
+  };
+
+  const updateField = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const submitAuth = async (event) => {
+    event.preventDefault();
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      if (isRegistering) {
+        await API.post("/auth/register", form);
+      }
+
+      const loginResponse = await API.post("/auth/login", {
+        email: form.email,
+        password: form.password,
+      });
+
+      onAuthenticated(loginResponse.data);
+    } catch (requestError) {
+      setError(
+        requestError.response?.data?.message ||
+          "Unable to continue. Please check your connection and try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="auth-page">
+      <section className="auth-panel">
+        <a className="brand auth-brand" href="#login">
+          <span className="brand-mark">C</span>
+          <span>
+            Campus<span>Connect</span>
+          </span>
+        </a>
+
+        <p className="auth-eyebrow">STUDENT COMMUNITY</p>
+        <h1>{isRegistering ? "Find your campus circle." : "Welcome back."}</h1>
+        <p className="auth-copy">
+          {isRegistering
+            ? "Create your space to share, collaborate, and grow with your campus community."
+            : "Sign in to continue the conversations that matter on campus."}
+        </p>
+
+        <form className="auth-form" onSubmit={submitAuth}>
+          {isRegistering && (
+            <label>
+              Full name
+              <input name="name" value={form.name} onChange={updateField} placeholder="Your full name" required />
+            </label>
+          )}
+
+          <label>
+            Email address
+            <input type="email" name="email" value={form.email} onChange={updateField} placeholder="you@college.edu" required />
+          </label>
+
+          <label>
+            Password
+            <input type="password" name="password" value={form.password} onChange={updateField} placeholder="At least 6 characters" minLength="6" required />
+          </label>
+
+          {isRegistering && (
+            <div className="auth-grid">
+              <label>
+                College
+                <input name="college" value={form.college} onChange={updateField} placeholder="Your college" required />
+              </label>
+              <label>
+                Branch
+                <input name="branch" value={form.branch} onChange={updateField} placeholder="e.g. CSE" required />
+              </label>
+              <label>
+                Year
+                <select name="year" value={form.year} onChange={updateField} required>
+                  <option value="" disabled>Select year</option>
+                  <option value="1">First year</option>
+                  <option value="2">Second year</option>
+                  <option value="3">Third year</option>
+                  <option value="4">Fourth year</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          {error && <p className="auth-error">{error}</p>}
+
+          <button className="auth-submit" disabled={isSubmitting}>
+            {isSubmitting ? "Please wait..." : isRegistering ? "Create account" : "Sign in to CampusConnect"}
+            {!isSubmitting && <Icon name="arrow" size={17} />}
+          </button>
+        </form>
+
+        <p className="auth-switch">
+          {isRegistering ? "Already part of CampusConnect?" : "New to CampusConnect?"}
+          <button onClick={() => switchMode(isRegistering ? "login" : "register")}>
+            {isRegistering ? "Sign in" : "Create an account"}
+          </button>
+        </p>
+      </section>
+
+      <aside className="auth-showcase" aria-hidden="true">
+        <div className="auth-orbit orbit-one" />
+        <div className="auth-orbit orbit-two" />
+        <span className="auth-star">✦</span>
+        <p>ONE CAMPUS.</p>
+        <h2>Every possibility.</h2>
+        <div className="auth-quote"><span>✦</span>Discover your people, ideas, and next opportunity.</div>
+      </aside>
+    </main>
+  );
+}
+
 function Post({
   post,
   fallbackType = "photo",
@@ -143,11 +305,6 @@ function Post({
   const [isLiking, setIsLiking] = useState(false);
 
   const isRealPost = Boolean(post);
-
-  useEffect(() => {
-    setLiked(Boolean(post?.isLiked));
-    setLikesCount(post?.likesCount || 0);
-  }, [post?._id, post?.isLiked, post?.likesCount]);
 
   const toggleLike = async () => {
     if (!isRealPost || isLiking) return;
@@ -299,6 +456,7 @@ function Post({
 }
 
 function App() {
+  const [session, setSession] = useState(readSession);
   const [active, setActive] = useState("Home");
   const [draft, setDraft] = useState("");
   const [posted, setPosted] = useState(false);
@@ -308,6 +466,31 @@ function App() {
   const [postError, setPostError] = useState("");
 
   useEffect(() => {
+    const clearExpiredSession = () => {
+      window.location.hash = "login";
+      setSession(null);
+    };
+    window.addEventListener("session-expired", clearExpiredSession);
+    return () => window.removeEventListener("session-expired", clearExpiredSession);
+  }, []);
+
+  const authenticate = ({ token, user }) => {
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(user));
+    window.location.hash = "dashboard";
+    setSession({ token, user });
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.hash = "login";
+    setSession(null);
+  };
+
+  useEffect(() => {
+    if (!session) return;
+
     const fetchPosts = async () => {
       try {
         setLoadingPosts(true);
@@ -328,7 +511,7 @@ function App() {
     };
 
     fetchPosts();
-  }, []);
+  }, [session]);
 
   const publish = () => {
     if (draft.trim()) {
@@ -336,6 +519,12 @@ function App() {
       setDraft("");
     }
   };
+
+  if (!session) {
+    return <AuthScreen onAuthenticated={authenticate} />;
+  }
+
+  const currentUser = session.user || { name: "Campus Student", role: "student" };
 
   return (
     <div className="app-shell">
@@ -373,12 +562,17 @@ function App() {
             <div className="avatar avatar-you">A</div>
 
             <div>
-              <strong>Ayush Verma</strong>
-              <span>Student</span>
+              <strong>{currentUser.name}</strong>
+              <span>{currentUser.role}</span>
             </div>
           </div>
 
           <Icon name="chevron" size={16} />
+
+          <button className="settings logout-button" onClick={logout}>
+            <Icon name="logout" />
+            <span>Logout</span>
+          </button>
         </div>
       </aside>
 
@@ -414,7 +608,7 @@ function App() {
               <p className="eyebrow">STUDENT COMMUNITY</p>
 
               <h1>
-                Good afternoon, Ayush <span>✦</span>
+                Good afternoon, {currentUser.name.split(" ")[0]} <span>✦</span>
               </h1>
 
               <p className="subheading">
