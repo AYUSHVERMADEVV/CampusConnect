@@ -44,6 +44,19 @@ const getPosts = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
+    const currentUserId = req.user?._id?.toString();
+    const postsWithLikeStatus = posts.map((post) => {
+      const postData = post.toObject();
+
+      return {
+        ...postData,
+        likesCount: postData.likes.length,
+        isLiked: currentUserId
+          ? postData.likes.some((like) => like.toString() === currentUserId)
+          : false,
+      };
+    });
+
     const totalPosts = await Post.countDocuments();
 
     res.status(200).json({
@@ -51,7 +64,7 @@ const getPosts = async (req, res) => {
       limit,
       totalPosts,
       totalPages: Math.ceil(totalPosts / limit),
-      posts,
+      posts: postsWithLikeStatus,
     });
   } catch (error) {
     console.error("Get Posts Error:", error.message);
@@ -119,6 +132,7 @@ const toggleLikePost = async (req, res) => {
         ? "Post unliked successfully"
         : "Post liked successfully",
       likesCount: post.likes.length,
+      isLiked: !alreadyLiked,
     });
   } catch (error) {
     console.error("Like Post Error:", error.message);

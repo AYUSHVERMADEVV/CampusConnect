@@ -8,12 +8,12 @@ const {
   deletePost,
   updatePost
 } = require("../controllers/postController");
-const { protect } = require("../middleware/authMiddleware");
+const { protect, optionalProtect } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
 // Create a new post
-router.get("/", getPosts);
+router.get("/", optionalProtect, getPosts);
 // Get single post
 router.get("/:id", getSinglePost);
 router.post("/", protect, createPost);
