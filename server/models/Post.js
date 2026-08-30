@@ -27,6 +27,12 @@ const postSchema = new mongoose.Schema(
       default: "general",
     },
 
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     likes: [
       {
         type: mongoose.Schema.Types.ObjectId,

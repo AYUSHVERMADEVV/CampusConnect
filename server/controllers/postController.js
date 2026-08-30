@@ -14,6 +14,7 @@ const createPost = async (req, res) => {
       title,
       content,
       category: category || "general",
+      imageUrl: req.file ? `/uploads/posts/${req.file.filename}` : "",
       author: req.user._id,
     });
 

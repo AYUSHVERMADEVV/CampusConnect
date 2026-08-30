@@ -9,6 +9,7 @@ const {
   updatePost
 } = require("../controllers/postController");
 const { protect, optionalProtect } = require("../middleware/authMiddleware");
+const { uploadPostImage } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ const router = express.Router();
 router.get("/", optionalProtect, getPosts);
 // Get single post
 router.get("/:id", getSinglePost);
-router.post("/", protect, createPost);
+router.post("/", protect, uploadPostImage.single("image"), createPost);
 // Like / Unlike a post
 router.post("/:id/like", protect, toggleLikePost);
 

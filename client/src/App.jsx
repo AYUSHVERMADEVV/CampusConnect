@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import API from "./api";
 import "./App.css";
 import "./auth.css";
+import "./composer.css";
 
 const Icon = ({ name, size = 20 }) => {
   const paths = {
@@ -140,6 +141,12 @@ const navItems = [
   ["calendar", "Events"],
   ["bookmark", "Saved"],
 ];
+
+const getImageSource = (imageUrl) => {
+  if (!imageUrl || imageUrl.startsWith("http")) return imageUrl;
+
+  return `${API.defaults.baseURL.replace(/\/api$/, "")}${imageUrl}`;
+};
 
 const readSession = () => {
   const token = localStorage.getItem("token");
@@ -300,6 +307,16 @@ function Post({
   fallbackType = "photo",
 }) {
   const [liked, setLiked] = useState(Boolean(post?.isLiked));
+  const [commentsOpen, setCommentsOpen] = useState(false);
+const [comments, setComments] = useState([]);
+const [commentText, setCommentText] = useState("");
+const [commentsLoading, setCommentsLoading] = useState(false);
+const [commentSubmitting, setCommentSubmitting] = useState(false);
+const [commentError, setCommentError] = useState("");
+const [localCommentsCount, setLocalCommentsCount] = useState(
+  post?.commentsCount || 0
+);
+  
   const [likesCount, setLikesCount] = useState(post?.likesCount || 0);
   const [likeError, setLikeError] = useState("");
   const [isLiking, setIsLiking] = useState(false);
@@ -330,6 +347,27 @@ function Post({
       setIsLiking(false);
     }
   };
+  const loadComments = async () => {
+  if (!post?._id) return;
+
+  try {
+    setCommentsLoading(true);
+    setCommentError("");
+
+    const response = await API.get(`/comments/${post._id}`);
+
+    setComments(response.data.comments || []);
+  } catch (error) {
+    console.error("Failed to load comments:", error);
+
+    setCommentError(
+      error.response?.data?.message ||
+        "Unable to load comments. Please try again."
+    );
+  } finally {
+    setCommentsLoading(false);
+  }
+};
 
   const authorName = post?.author?.name || "Campus Student";
   const authorRole = post?.author?.role || "student";
@@ -379,6 +417,14 @@ function Post({
         {content}
       </p>
 
+      {post?.imageUrl && (
+        <img
+          className="post-image"
+          src={getImageSource(post.imageUrl)}
+          alt={title || "Campus post"}
+        />
+      )}
+
       {!isRealPost && fallbackType === "photo" && (
         <div className="post-visual">
           <div className="visual-grid" />
@@ -419,16 +465,15 @@ function Post({
       )}
 
       <div className="engagement">
-        <span>
-          <span className="reaction-heart">♥</span>{" "}
-          {isRealPost ? likesCount : liked ? 128 : 127} likes
-        </span>
+  <span>
+    <span className="reaction-heart">♥</span>{" "}
+    {isRealPost ? likesCount : liked ? 128 : 127} likes
+  </span>
 
-        <span>
-          {post?.comments?.length || 0} comments · 0 shares
-        </span>
-      </div>
-
+  <span>
+    {isRealPost ? localCommentsCount : 0} comments · 0 shares
+  </span>
+</div>
       <div className="post-actions">
         <button
           onClick={toggleLike}
@@ -439,17 +484,114 @@ function Post({
           {isLiking ? "Updating..." : "Like"}
         </button>
 
-        <button>
-          <Icon name="message" />
-          Comment
-        </button>
+      <button
+  onClick={() => {
+    setCommentsOpen((current) => !current);
+
+    if (!commentsOpen) {
+      loadComments();
+    }
+  }}
+>
+  <Icon name="message" />
+  Comment
+</button>
 
         <button>
           <Icon name="share" />
           Share
         </button>
       </div>
+        {commentsOpen && isRealPost && (
+  <div className="comments-section">
+    <div className="comments-header">
+      <strong>Comments</strong>
+      <span>{localCommentsCount}</span>
+    </div>
 
+    {commentsLoading && (
+      <p className="comments-status">Loading comments...</p>
+    )}
+
+    {commentError && (
+      <p className="comments-error">{commentError}</p>
+    )}
+
+    {!commentsLoading && !commentError && comments.length === 0 && (
+      <p className="comments-status">
+        No comments yet. Be the first to comment.
+      </p>
+    )}
+
+    {!commentsLoading &&
+      comments.map((comment) => (
+        <div className="comment-item" key={comment._id}>
+          <div className="avatar avatar-comment">
+            {(comment.author?.name || "U")
+              .charAt(0)
+              .toUpperCase()}
+          </div>
+
+          <div className="comment-content">
+            <strong>
+              {comment.author?.name || "Campus Student"}
+            </strong>
+
+            <p>{comment.content}</p>
+          </div>
+        </div>
+      ))}
+
+    <div className="comment-input-row">
+      <input
+        type="text"
+        value={commentText}
+        onChange={(e) => setCommentText(e.target.value)}
+        placeholder="Write a comment..."
+        maxLength={500}
+        disabled={commentSubmitting}
+      />
+
+      <button
+        type="button"
+        disabled={!commentText.trim() || commentSubmitting}
+        onClick={async () => {
+          if (!commentText.trim()) return;
+
+          try {
+            setCommentSubmitting(true);
+            setCommentError("");
+
+            const response = await API.post(
+              `/comments/${post._id}`,
+              {
+                content: commentText.trim(),
+              }
+            );
+
+            setComments((current) => [
+              ...current,
+              response.data.comment,
+            ]);
+
+            setCommentText("");
+
+            setLocalCommentsCount((count) => count + 1);
+          } catch (error) {
+            setCommentError(
+              error.response?.data?.message ||
+                "Unable to add comment. Please try again."
+            );
+          } finally {
+            setCommentSubmitting(false);
+          }
+        }}
+      >
+        {commentSubmitting ? "..." : "Send"}
+      </button>
+    </div>
+  </div>
+)}
       {likeError && <p className="error-state">{likeError}</p>}
     </article>
   );
@@ -458,8 +600,17 @@ function Post({
 function App() {
   const [session, setSession] = useState(readSession);
   const [active, setActive] = useState("Home");
-  const [draft, setDraft] = useState("");
+  const [postDraft, setPostDraft] = useState({
+    title: "",
+    content: "",
+    category: "general",
+  });
   const [posted, setPosted] = useState(false);
+  const [composerError, setComposerError] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const photoInputRef = useRef(null);
 
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
@@ -513,10 +664,89 @@ function App() {
     fetchPosts();
   }, [session]);
 
-  const publish = () => {
-    if (draft.trim()) {
+  const updatePostDraft = (event) => {
+    const { name, value } = event.target;
+    setPostDraft((current) => ({ ...current, [name]: value }));
+  };
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
+
+  const clearSelectedImage = () => {
+    setSelectedImage(null);
+    setImagePreview("");
+
+    if (photoInputRef.current) {
+      photoInputRef.current.value = "";
+    }
+  };
+
+  const selectImage = (event) => {
+    const image = event.target.files?.[0];
+
+    if (!image) return;
+
+    if (!image.type.startsWith("image/")) {
+      setComposerError("Please select an image file.");
+      clearSelectedImage();
+      return;
+    }
+
+    if (image.size > 5 * 1024 * 1024) {
+      setComposerError("Image must be 5 MB or smaller.");
+      clearSelectedImage();
+      return;
+    }
+
+    setComposerError("");
+    setSelectedImage(image);
+    setImagePreview(URL.createObjectURL(image));
+  };
+
+  const publish = async () => {
+    const title = postDraft.title.trim();
+    const content = postDraft.content.trim();
+
+    if (!title || !content) {
+      setComposerError("Please add both a title and a message before posting.");
+      return;
+    }
+
+    try {
+      setIsPublishing(true);
+      setComposerError("");
+
+      const formData = new FormData();
+      formData.append("title", title);
+      formData.append("content", content);
+      formData.append("category", postDraft.category);
+
+      if (selectedImage) {
+        formData.append("image", selectedImage);
+      }
+
+      const response = await API.post("/posts", formData);
+
+      const newPost = {
+        ...response.data.post,
+        likesCount: response.data.post.likes?.length || 0,
+        isLiked: false,
+      };
+
+      setPosts((currentPosts) => [newPost, ...currentPosts]);
       setPosted(true);
-      setDraft("");
+      setPostDraft({ title: "", content: "", category: "general" });
+      clearSelectedImage();
+    } catch (error) {
+      setComposerError(
+        error.response?.data?.message ||
+          "Unable to publish your post. Please try again."
+      );
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -627,35 +857,87 @@ function App() {
             <div className="avatar avatar-you">A</div>
 
             <div className="composer-body">
+             <input
+  ref={photoInputRef}
+  className="composer-file-input"
+  type="file"
+  accept="image/jpeg,image/png,image/webp,image/gif"
+  onChange={selectImage}
+  aria-label="Choose a photo"
+/>
+
+              <input
+                className="composer-title"
+                name="title"
+                value={postDraft.title}
+                onChange={updatePostDraft}
+                placeholder="Give your post a title"
+                maxLength="150"
+              />
+
               <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                name="content"
+                value={postDraft.content}
+                onChange={updatePostDraft}
                 placeholder="Share something with your campus..."
                 rows="2"
               />
 
+              {imagePreview && (
+                <div className="composer-image-preview">
+                  <img src={imagePreview} alt="Selected post preview" />
+                  <div>
+                    <span>{selectedImage?.name}</span>
+                    <div className="image-preview-actions">
+                      <button type="button" onClick={() => photoInputRef.current?.click()}>
+                        Change
+                      </button>
+                      <button type="button" onClick={clearSelectedImage}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="composer-foot">
                 <div>
-                  <button>
-                    <Icon name="image" size={18} />
-                    Photo
-                  </button>
-
-                  <button>
+                  <label className="category-picker">
                     <Icon name="smile" size={18} />
-                    Feeling
+                    <select
+                      name="category"
+                      value={postDraft.category}
+                      onChange={updatePostDraft}
+                      aria-label="Post category"
+                    >
+                      <option value="general">General</option>
+                      <option value="question">Question</option>
+                      <option value="discussion">Discussion</option>
+                      <option value="announcement">Announcement</option>
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={isPublishing}
+                  >
+                    <Icon name="image" size={18} />
+                    {selectedImage ? "Change photo" : "Photo"}
                   </button>
                 </div>
 
                 <button
                   onClick={publish}
                   className="publish"
-                  disabled={!draft.trim()}
+                  disabled={isPublishing}
                 >
-                  Post
-                  <Icon name="arrow" size={16} />
+                  {isPublishing ? "Posting..." : "Post"}
+                  {!isPublishing && <Icon name="arrow" size={16} />}
                 </button>
               </div>
+
+              {composerError && <p className="composer-error">{composerError}</p>}
             </div>
           </section>
 
