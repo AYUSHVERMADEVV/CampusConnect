@@ -5,6 +5,7 @@ function ProfilePage({
   posts,
   getImageSource,
   onBack,
+  onMessage,
 }) {
   if (!profileUser) return null;
 
@@ -63,7 +64,15 @@ function ProfilePage({
               Follow
             </button>
 
-            <button type="button" className="profile-message-button">
+            <button
+              type="button"
+              className="profile-message-button"
+              onClick={() => {
+                if (typeof onMessage === "function") {
+                  onMessage(profileUser);
+                }
+              }}
+            >
               Message
             </button>
           </div>

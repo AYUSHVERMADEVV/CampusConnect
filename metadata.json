@@ -1,0 +1,6 @@
+{
+  "name": "CampusConnect",
+  "description": "A campus student community platform to discover peer circles, share updates, collaborate on projects, and engage in campus life.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

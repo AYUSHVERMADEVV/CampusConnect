@@ -58,4 +58,29 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("User", userSchema);
+const { User: MemoryUser } = require("./inMemoryStore");
+const MongooseUser = mongoose.models.User || mongoose.model("User", userSchema);
+
+module.exports = new Proxy(MongooseUser, {
+  get(target, prop) {
+    if (mongoose.connection.readyState === 1) {
+      return target[prop];
+    }
+    if (prop in MemoryUser) {
+      return MemoryUser[prop];
+    }
+    return target[prop];
+  },
+  apply(target, thisArg, argumentsList) {
+    if (mongoose.connection.readyState === 1) {
+      return Reflect.apply(target, thisArg, argumentsList);
+    }
+    return MemoryUser.create(...argumentsList);
+  },
+  construct(target, argumentsList) {
+    if (mongoose.connection.readyState === 1) {
+      return Reflect.construct(target, argumentsList);
+    }
+    return MemoryUser.create(...argumentsList);
+  },
+});

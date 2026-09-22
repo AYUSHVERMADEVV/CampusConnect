@@ -1,8 +1,10 @@
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
+const Community = require("../models/Community");
+
 const createPost = async (req, res) => {
   try {
-    const { title, content, category } = req.body;
+    const { title, content, category, community } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({
@@ -10,10 +12,35 @@ const createPost = async (req, res) => {
       });
     }
 
+    let communityId = null;
+    if (community) {
+      const communityDoc = await Community.findById(community);
+      if (!communityDoc) {
+        return res.status(404).json({
+          message: "Community not found",
+        });
+      }
+
+      const userIdStr = req.user._id.toString();
+      const members = communityDoc.members || [];
+      const isMember = members.some(
+        (m) => (m?._id || m)?.toString() === userIdStr
+      );
+
+      if (!isMember) {
+        return res.status(403).json({
+          message: "You must join this community before posting",
+        });
+      }
+
+      communityId = communityDoc._id;
+    }
+
     const post = await Post.create({
       title,
       content,
       category: category || "general",
+      community: communityId,
       imageUrl: req.file ? `/uploads/posts/${req.file.filename}` : "",
       author: req.user._id,
     });
@@ -69,8 +96,14 @@ const getPosts = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    const posts = await Post.find()
-      .populate("author", "name email role")
+    const query = {};
+    if (req.query.community) {
+      query.community = req.query.community;
+    }
+
+    const posts = await Post.find(query)
+      .populate("author", "name email role profilePicture")
+      .populate("community", "name category type avatar")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

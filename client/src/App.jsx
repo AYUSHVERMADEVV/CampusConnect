@@ -4,6 +4,9 @@ import "./App.css";
 import "./auth.css";
 import "./composer.css";
 import ProfilePage from "./ProfilePage";
+import ChatPage from "./ChatPage";
+import CommunitiesPage from "./CommunitiesPage";
+import EventsPage from "./EventsPage";
 
 const Icon = ({ name, size = 20 }) => {
   const paths = {
@@ -1048,6 +1051,7 @@ function App() {
   const [imagePreview, setImagePreview] = useState("");
   const photoInputRef = useRef(null);
   const [profileUser, setProfileUser] = useState(null);
+  const [chatUser, setChatUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postError, setPostError] = useState("");
@@ -1284,8 +1288,33 @@ function App() {
           {navItems.map(([icon, label]) => (
             <button
               key={label}
-              onClick={() => setActive(label)}
-              className={active === label ? "active" : ""}
+              onClick={() => {
+                setActive(label);
+                if (label === "Communities") {
+                  setCurrentPage("communities");
+                  setProfileUser(null);
+                  setSelectedUser(null);
+                  setSearchQuery("");
+                } else if (label === "Events") {
+                  setCurrentPage("events");
+                  setProfileUser(null);
+                  setSelectedUser(null);
+                  setSearchQuery("");
+                } else if (label === "Home" || label === "Saved") {
+                  setCurrentPage("home");
+                  setProfileUser(null);
+                  setSelectedUser(null);
+                }
+              }}
+              className={
+                (active === label &&
+                  (label !== "Communities" || currentPage === "communities") &&
+                  (label !== "Events" || currentPage === "events")) ||
+                (label === "Communities" && currentPage === "communities") ||
+                (label === "Events" && currentPage === "events")
+                  ? "active"
+                  : ""
+              }
             >
               <Icon name={icon} />
               <span>{label}</span>
@@ -1351,7 +1380,15 @@ function App() {
           </div>
         </header>
 
-        {currentPage === "profile" ? (
+        {currentPage === "chat" ? (
+          <ChatPage
+            chatUser={chatUser || profileUser}
+            currentUser={currentUser}
+            onBack={() => {
+              setCurrentPage("profile");
+            }}
+          />
+        ) : currentPage === "profile" ? (
           <ProfilePage
             profileUser={profileUser}
             posts={posts}
@@ -1360,6 +1397,36 @@ function App() {
               setCurrentPage("home");
               setSelectedUser(null);
               setProfileUser(null);
+              setChatUser(null);
+            }}
+            onMessage={(userToChat) => {
+              setChatUser(userToChat || profileUser);
+              setCurrentPage("chat");
+            }}
+          />
+        ) : currentPage === "communities" || active === "Communities" ? (
+          <CommunitiesPage
+            currentUser={currentUser}
+            PostComponent={Post}
+            onAuthorClick={(userId) => {
+              setSelectedUser(userId);
+              setCurrentPage("profile");
+            }}
+            onBack={() => {
+              setCurrentPage("home");
+              setActive("Home");
+            }}
+          />
+        ) : currentPage === "events" || active === "Events" ? (
+          <EventsPage
+            currentUser={currentUser}
+            onAuthorClick={(userId) => {
+              setSelectedUser(userId);
+              setCurrentPage("profile");
+            }}
+            onBack={() => {
+              setCurrentPage("home");
+              setActive("Home");
             }}
           />
         ) : (
@@ -1677,39 +1744,69 @@ function App() {
         <section className="right-section communities">
           <div className="section-title">
             <h2>Your communities</h2>
-            <button>Manage</button>
+            <button
+              onClick={() => {
+                setActive("Communities");
+                setCurrentPage("communities");
+                setProfileUser(null);
+                setSelectedUser(null);
+              }}
+            >
+              Explore
+            </button>
           </div>
 
-          <a href="#design">
-            <span className="community-icon design-icon">✦</span>
+          <a
+            href="#communities"
+            onClick={(e) => {
+              e.preventDefault();
+              setActive("Communities");
+              setCurrentPage("communities");
+            }}
+          >
+            <span className="community-icon design-icon">💻</span>
 
             <div>
-              <strong>Design Society</strong>
-              <small>Community</small>
+              <strong>Coding Club</strong>
+              <small>Club • Active</small>
             </div>
 
             <span className="unread">3</span>
           </a>
 
-          <a href="#tech">
+          <a
+            href="#communities"
+            onClick={(e) => {
+              e.preventDefault();
+              setActive("Communities");
+              setCurrentPage("communities");
+            }}
+          >
             <span className="community-icon tech-icon">
-              &lt;/&gt;
+              🎓
             </span>
 
             <div>
-              <strong>Tech Society</strong>
-              <small>Community</small>
+              <strong>BCA Tech Circle</strong>
+              <small>Course • Active</small>
             </div>
 
-            <span className="unread">8</span>
+            <span className="unread">2</span>
           </a>
 
-          <a href="#entre">
-            <span className="community-icon entre-icon">↗</span>
+          <a
+            href="#communities"
+            onClick={(e) => {
+              e.preventDefault();
+              setActive("Communities");
+              setCurrentPage("communities");
+            }}
+          >
+            <span className="community-icon entre-icon">🚀</span>
 
             <div>
-              <strong>Entrepreneurship</strong>
-              <small>Community</small>
+              <strong>Placement Prep Hub</strong>
+              <small>Interest • Active</small>
             </div>
           </a>
         </section>

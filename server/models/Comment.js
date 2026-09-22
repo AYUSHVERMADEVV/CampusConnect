@@ -39,4 +39,29 @@ const commentSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("Comment", commentSchema);
+const { Comment: MemoryComment } = require("./inMemoryStore");
+const MongooseComment = mongoose.models.Comment || mongoose.model("Comment", commentSchema);
+
+module.exports = new Proxy(MongooseComment, {
+  get(target, prop) {
+    if (mongoose.connection.readyState === 1) {
+      return target[prop];
+    }
+    if (prop in MemoryComment) {
+      return MemoryComment[prop];
+    }
+    return target[prop];
+  },
+  apply(target, thisArg, argumentsList) {
+    if (mongoose.connection.readyState === 1) {
+      return Reflect.apply(target, thisArg, argumentsList);
+    }
+    return MemoryComment.create(...argumentsList);
+  },
+  construct(target, argumentsList) {
+    if (mongoose.connection.readyState === 1) {
+      return Reflect.construct(target, argumentsList);
+    }
+    return MemoryComment.create(...argumentsList);
+  },
+});
