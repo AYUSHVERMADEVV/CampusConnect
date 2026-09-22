@@ -3,7 +3,7 @@ const Post = require("../models/Post");
 
 const createComment = async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, parentComment } = req.body;
     const { postId } = req.params;
 
     if (!content) {
@@ -21,14 +21,14 @@ const createComment = async (req, res) => {
     }
 
     const comment = await Comment.create({
-      content,
-      author: req.user._id,
-      post: postId,
-    });
+  content,
+  author: req.user._id,
+  post: postId,
+  parentComment: parentComment || null,
+});
 
     await comment.populate("author", "name email role");
 
-    // Update comment count on post
     post.commentsCount += 1;
     await post.save();
 
@@ -44,13 +44,15 @@ const createComment = async (req, res) => {
     });
   }
 };
+
 const getComments = async (req, res) => {
   try {
     const { postId } = req.params;
 
     const comments = await Comment.find({ post: postId })
-      .populate("author", "name email role")
-      .sort({ createdAt: 1 });
+  .populate("author", "name email role")
+  .populate("parentComment")
+  .sort({ createdAt: 1 });
 
     res.status(200).json({
       count: comments.length,
@@ -64,6 +66,57 @@ const getComments = async (req, res) => {
     });
   }
 };
+
+/* ================================
+   LIKE / UNLIKE COMMENT
+================================ */
+
+const toggleLikeComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+
+    const comment = await Comment.findById(commentId);
+
+    if (!comment) {
+      return res.status(404).json({
+        message: "Comment not found",
+      });
+    }
+
+    const userId = req.user._id.toString();
+
+    const alreadyLiked = comment.likes.some(
+      (like) => like.toString() === userId
+    );
+
+    if (alreadyLiked) {
+      // Unlike
+      comment.likes = comment.likes.filter(
+        (like) => like.toString() !== userId
+      );
+    } else {
+      // Like
+      comment.likes.push(req.user._id);
+    }
+
+    await comment.save();
+
+    res.status(200).json({
+      message: alreadyLiked
+        ? "Comment unliked successfully"
+        : "Comment liked successfully",
+      isLiked: !alreadyLiked,
+      likesCount: comment.likes.length,
+    });
+  } catch (error) {
+    console.error("Like Comment Error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
 const deleteComment = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -76,7 +129,6 @@ const deleteComment = async (req, res) => {
       });
     }
 
-    // Only comment author can delete
     if (comment.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         message: "Not authorized to delete this comment",
@@ -85,7 +137,6 @@ const deleteComment = async (req, res) => {
 
     await Comment.findByIdAndDelete(commentId);
 
-    // Decrease comment count
     await Post.findByIdAndUpdate(comment.post, {
       $inc: { commentsCount: -1 },
     });
@@ -105,5 +156,6 @@ const deleteComment = async (req, res) => {
 module.exports = {
   createComment,
   getComments,
+  toggleLikeComment,
   deleteComment,
 };

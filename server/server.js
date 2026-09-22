@@ -4,9 +4,12 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
 const multer = require("multer");
-const userRoutes = require("./routes/userRoutes");
+
+
 const postRoutes = require("./routes/postRoutes");
+const userRoutes = require("./routes/userRoutes");
 const commentRoutes = require("./routes/commentRoutes");
+const messageRoutes = require("./routes/messageRoutes");
 
 const authRoutes = require("./routes/authRoutes");
 dotenv.config();
@@ -19,9 +22,11 @@ app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
+
 app.use("/api/posts", postRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/comments", commentRoutes);
+app.use("/api/messages", messageRoutes);
 
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {

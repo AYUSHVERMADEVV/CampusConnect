@@ -3,6 +3,7 @@ import API from "./api";
 import "./App.css";
 import "./auth.css";
 import "./composer.css";
+import ProfilePage from "./ProfilePage";
 
 const Icon = ({ name, size = 20 }) => {
   const paths = {
@@ -208,7 +209,7 @@ function AuthScreen({ onAuthenticated }) {
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
-          "Unable to continue. Please check your connection and try again."
+        "Unable to continue. Please check your connection and try again."
       );
     } finally {
       setIsSubmitting(false);
@@ -301,22 +302,203 @@ function AuthScreen({ onAuthenticated }) {
     </main>
   );
 }
+function CommentItem({
+  comment,
+  comments,
+  commentLikes,
+  commentLiking,
+  toggleCommentLike,
+  onReply,
+  replyingTo,
+  commentText,
+  setCommentText,
+  commentSubmitting,
+  setCommentSubmitting,
+  setCommentError,
+  setComments,
+  postId,
+  setReplyingTo,
+  setLocalCommentsCount,
+}) {
+  const replies = comments.filter(
+    (reply) =>
+      reply.parentComment?._id === comment._id ||
+      reply.parentComment === comment._id
+  );
 
+  return (
+    <div className="comment-thread">
+      <div className="comment-item">
+        <div className="avatar avatar-comment">
+          {(comment.author?.name || "U").charAt(0).toUpperCase()}
+        </div>
+
+        <div className="comment-content">
+          <div className="comment-meta">
+            <strong>
+              {comment.author?.name || "Campus Student"}
+            </strong>
+
+            <span>
+              {new Date(comment.createdAt).toLocaleString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+
+          <p>{comment.content}</p>
+
+          <div className="comment-actions">
+            <button
+              type="button"
+              className={
+                commentLikes[comment._id]?.isLiked
+                  ? "comment-like is-liked"
+                  : "comment-like"
+              }
+              onClick={() => toggleCommentLike(comment._id)}
+              disabled={Boolean(commentLiking[comment._id])}
+            >
+              <Icon name="heart" size={15} />
+
+              {commentLikes[comment._id]?.isLiked
+                ? "Liked"
+                : "Like"}
+
+              <span>
+                {commentLikes[comment._id]?.likesCount ??
+                  comment.likes?.length ??
+                  0}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="comment-reply-button"
+              onClick={() => onReply(comment._id)}
+            >
+              Reply
+            </button>
+          </div>
+
+          {replyingTo === comment._id && (
+            <div className="reply-input-row">
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder={`Reply to ${comment.author?.name || "this comment"
+                  }...`}
+                maxLength={500}
+              />
+
+              <button
+                type="button"
+                disabled={
+                  !commentText.trim() || commentSubmitting
+                }
+                onClick={async () => {
+                  if (!commentText.trim()) return;
+
+                  try {
+                    setCommentSubmitting(true);
+                    setCommentError("");
+
+                    const response = await API.post(
+                      `/comments/${postId}`,
+                      {
+                        content: commentText.trim(),
+                        parentComment: comment._id,
+                      }
+                    );
+
+                    setComments((current) => [
+                      ...current,
+                      response.data.comment,
+                    ]);
+
+                    setCommentText("");
+                    setReplyingTo(null);
+                    setLocalCommentsCount(
+                      (count) => count + 1
+                    );
+                  } catch (error) {
+                    setCommentError(
+                      error.response?.data?.message ||
+                      "Unable to add reply. Please try again."
+                    );
+                  } finally {
+                    setCommentSubmitting(false);
+                  }
+                }}
+              >
+                {commentSubmitting ? "..." : "Reply"}
+              </button>
+            </div>
+          )}
+
+          {replies.length > 0 && (
+            <div className="nested-replies">
+              {replies.map((reply) => (
+                <CommentItem
+                  key={reply._id}
+                  comment={reply}
+                  comments={comments}
+                  commentLikes={commentLikes}
+                  commentLiking={commentLiking}
+                  toggleCommentLike={toggleCommentLike}
+                  onReply={onReply}
+                  replyingTo={replyingTo}
+                  commentText={commentText}
+                  setCommentText={setCommentText}
+                  commentSubmitting={commentSubmitting}
+                  setCommentSubmitting={setCommentSubmitting}
+                  setCommentError={setCommentError}
+                  setComments={setComments}
+                  postId={postId}
+                  setReplyingTo={setReplyingTo}
+                  setLocalCommentsCount={setLocalCommentsCount}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 function Post({
   post,
   fallbackType = "photo",
+  onAuthorClick,
 }) {
+
   const [liked, setLiked] = useState(Boolean(post?.isLiked));
   const [commentsOpen, setCommentsOpen] = useState(false);
-const [comments, setComments] = useState([]);
-const [commentText, setCommentText] = useState("");
-const [commentsLoading, setCommentsLoading] = useState(false);
-const [commentSubmitting, setCommentSubmitting] = useState(false);
-const [commentError, setCommentError] = useState("");
-const [localCommentsCount, setLocalCommentsCount] = useState(
-  post?.commentsCount || 0
-);
-  
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState("");
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState("");
+  const [commentLikes, setCommentLikes] = useState({});
+  const [commentLiking, setCommentLiking] = useState({});
+  const [editingPost, setEditingPost] = useState(false);
+  const [editTitle, setEditTitle] = useState(post?.title || "");
+  const [editContent, setEditContent] = useState(post?.content || "");
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [localCommentsCount, setLocalCommentsCount] = useState(
+    post?.commentsCount || 0
+  );
+  const [saved, setSaved] = useState(
+    Boolean(post?.isSaved)
+  );
+
+
+  const [isSaving, setIsSaving] = useState(false);
   const [likesCount, setLikesCount] = useState(post?.likesCount || 0);
   const [likeError, setLikeError] = useState("");
   const [isLiking, setIsLiking] = useState(false);
@@ -347,27 +529,144 @@ const [localCommentsCount, setLocalCommentsCount] = useState(
       setIsLiking(false);
     }
   };
-  const loadComments = async () => {
-  if (!post?._id) return;
+  const toggleSave = async () => {
+    if (!isRealPost || isSaving) return;
 
-  try {
-    setCommentsLoading(true);
-    setCommentError("");
+    if (!localStorage.getItem("token")) {
+      alert("Please log in to save a post.");
+      return;
+    }
 
-    const response = await API.get(`/comments/${post._id}`);
+    try {
+      setIsSaving(true);
 
-    setComments(response.data.comments || []);
-  } catch (error) {
-    console.error("Failed to load comments:", error);
+      const response = await API.post(
+        `/posts/${post._id}/save`
+      );
 
-    setCommentError(
-      error.response?.data?.message ||
-        "Unable to load comments. Please try again."
+      setSaved(response.data.isSaved);
+    } catch (error) {
+      console.error("Save post failed:", error);
+
+      alert(
+        error.response?.data?.message ||
+        "Unable to save post. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  const updatePost = async () => {
+    if (!post?._id) return;
+
+    if (!editTitle.trim() || !editContent.trim()) {
+      alert("Title and content cannot be empty.");
+      return;
+    }
+
+    try {
+      const response = await API.put(`/posts/${post._id}`, {
+        title: editTitle.trim(),
+        content: editContent.trim(),
+      });
+
+      console.log("Post updated:", response.data);
+
+      setEditingPost(false);
+      window.location.reload();
+    } catch (error) {
+      console.error("Update post failed:", error);
+
+      alert(
+        error.response?.data?.message ||
+        "Unable to update post. Please try again."
+      );
+    }
+  };
+  const deletePost = async () => {
+    if (!post?._id) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this post?"
     );
-  } finally {
-    setCommentsLoading(false);
-  }
-};
+
+    if (!confirmed) return;
+
+    try {
+      await API.delete(`/posts/${post._id}`);
+
+      setShowMoreMenu(false);
+
+      window.location.reload();
+    } catch (error) {
+      console.error("Delete post failed:", error);
+
+      alert(
+        error.response?.data?.message ||
+        "Unable to delete post. Please try again."
+      );
+    }
+  };
+  const loadComments = async () => {
+    if (!post?._id) return;
+
+    try {
+      setCommentsLoading(true);
+      setCommentError("");
+
+      const response = await API.get(`/comments/${post._id}`);
+
+      setComments(response.data.comments || []);
+    } catch (error) {
+      console.error("Failed to load comments:", error);
+
+      setCommentError(
+        error.response?.data?.message ||
+        "Unable to load comments. Please try again."
+      );
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+  const toggleCommentLike = async (commentId) => {
+    if (commentLiking[commentId]) return;
+
+    if (!localStorage.getItem("token")) {
+      setCommentError("Please log in to like a comment.");
+      return;
+    }
+
+    try {
+      setCommentLiking((current) => ({
+        ...current,
+        [commentId]: true,
+      }));
+
+      setCommentError("");
+
+      const response = await API.post(
+        `/comments/${commentId}/like`
+      );
+
+      setCommentLikes((current) => ({
+        ...current,
+        [commentId]: {
+          isLiked: response.data.isLiked,
+          likesCount: response.data.likesCount,
+        },
+      }));
+    } catch (error) {
+      setCommentError(
+        error.response?.data?.message ||
+        "Unable to update comment like."
+      );
+    } finally {
+      setCommentLiking((current) => ({
+        ...current,
+        [commentId]: false,
+      }));
+    }
+  };
 
   const authorName = post?.author?.name || "Campus Student";
   const authorRole = post?.author?.role || "student";
@@ -391,31 +690,125 @@ const [localCommentsCount, setLocalCommentsCount] = useState(
   return (
     <article className="post-card">
       <div className="post-head">
-        <div className="avatar avatar-ananya">
-          {authorName.charAt(0).toUpperCase()}
+        <div
+          className="post-author"
+          onClick={() => {
+
+            onAuthorClick?.(post?.author?._id)
+          }
+          }>
+          <div className="avatar avatar-ananya">
+            {authorName.charAt(0).toUpperCase()}
+          </div>
+
+          <div>
+            <strong>{authorName}</strong>
+
+            <span>
+              {category} · {authorRole}
+            </span>
+          </div>
+        </div>
+        <div className="more-wrapper">
+          <button
+            type="button"
+            className="icon-button more-button"
+            aria-label="More options"
+            onClick={() => setShowMoreMenu((current) => !current)}
+          >
+            <Icon name="more" />
+          </button>
+
+          {showMoreMenu && (
+            <div className="more-menu">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `${window.location.origin}/post/${post?._id}`
+                  );
+                  setShowMoreMenu(false);
+                }}
+              >
+                Copy post link
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                }}
+              >
+                Report post
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setEditingPost(true);
+                }}
+              >
+                Edit post
+              </button>
+              <button
+                type="button"
+                onClick={deletePost}
+              >
+                Delete post
+              </button>
+            </div>
+          )}
         </div>
 
-        <div>
-          <strong>{authorName}</strong>
-
-          <span>
-            {category} · {authorRole}
-          </span>
-        </div>
-
-        <button
-          className="icon-button more-button"
-          aria-label="More options"
-        >
-          <Icon name="more" />
-        </button>
       </div>
 
-      {title && <h3 className="post-title">{title}</h3>}
+      {editingPost ? (
+        <div className="edit-post-form">
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            placeholder="Post title"
+            maxLength={150}
+          />
 
-      <p className="post-copy">
-        {content}
-      </p>
+          <textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            placeholder="Write your post..."
+            maxLength={2000}
+            rows={5}
+          />
+
+          <div className="edit-post-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setEditTitle(post?.title || "");
+                setEditContent(post?.content || "");
+                setEditingPost(false);
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={updatePost}
+            >
+              Save changes
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {title && <h3 className="post-title">{title}</h3>}
+
+          <p className="post-copy">
+            {content}
+          </p>
+        </>
+      )}
 
       {post?.imageUrl && (
         <img
@@ -465,15 +858,15 @@ const [localCommentsCount, setLocalCommentsCount] = useState(
       )}
 
       <div className="engagement">
-  <span>
-    <span className="reaction-heart">♥</span>{" "}
-    {isRealPost ? likesCount : liked ? 128 : 127} likes
-  </span>
+        <span>
+          <span className="reaction-heart">♥</span>{" "}
+          {isRealPost ? likesCount : liked ? 128 : 127} likes
+        </span>
 
-  <span>
-    {isRealPost ? localCommentsCount : 0} comments · 0 shares
-  </span>
-</div>
+        <span>
+          {isRealPost ? localCommentsCount : 0} comments · 0 shares
+        </span>
+      </div>
       <div className="post-actions">
         <button
           onClick={toggleLike}
@@ -484,114 +877,156 @@ const [localCommentsCount, setLocalCommentsCount] = useState(
           {isLiking ? "Updating..." : "Like"}
         </button>
 
-      <button
-  onClick={() => {
-    setCommentsOpen((current) => !current);
+        <button
+          onClick={() => {
+            setCommentsOpen((current) => !current);
 
-    if (!commentsOpen) {
-      loadComments();
-    }
-  }}
->
-  <Icon name="message" />
-  Comment
-</button>
+            if (!commentsOpen) {
+              loadComments();
+            }
+          }}
+        >
+          <Icon name="message" />
+          Comment
+        </button>
+        <button
+          type="button"
+          onClick={toggleSave}
+          disabled={isSaving}
+          className={saved ? "is-saved" : ""}
+        >
+          <Icon name="bookmark" />
+          {isSaving ? "Saving..." : saved ? "Saved" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            const shareUrl = `${window.location.origin}/post/${post?._id}`;
 
-        <button>
+            try {
+              if (navigator.share) {
+                await navigator.share({
+                  title: title,
+                  text: content,
+                  url: shareUrl,
+                });
+              } else {
+                await navigator.clipboard.writeText(shareUrl);
+                alert("Post link copied!");
+              }
+            } catch (error) {
+              // User cancelled native share — do nothing
+              if (error.name !== "AbortError") {
+                console.error("Share failed:", error);
+              }
+            }
+          }}
+        >
           <Icon name="share" />
           Share
         </button>
       </div>
-        {commentsOpen && isRealPost && (
-  <div className="comments-section">
-    <div className="comments-header">
-      <strong>Comments</strong>
-      <span>{localCommentsCount}</span>
-    </div>
-
-    {commentsLoading && (
-      <p className="comments-status">Loading comments...</p>
-    )}
-
-    {commentError && (
-      <p className="comments-error">{commentError}</p>
-    )}
-
-    {!commentsLoading && !commentError && comments.length === 0 && (
-      <p className="comments-status">
-        No comments yet. Be the first to comment.
-      </p>
-    )}
-
-    {!commentsLoading &&
-      comments.map((comment) => (
-        <div className="comment-item" key={comment._id}>
-          <div className="avatar avatar-comment">
-            {(comment.author?.name || "U")
-              .charAt(0)
-              .toUpperCase()}
+      {commentsOpen && isRealPost && (
+        <div className="comments-section">
+          <div className="comments-header">
+            <strong>Comments</strong>
+            <span>{localCommentsCount}</span>
           </div>
 
-          <div className="comment-content">
-            <strong>
-              {comment.author?.name || "Campus Student"}
-            </strong>
+          {commentsLoading && (
+            <p className="comments-status">Loading comments...</p>
+          )}
 
-            <p>{comment.content}</p>
+          {commentError && (
+            <p className="comments-error">{commentError}</p>
+          )}
+
+          {!commentsLoading && !commentError && comments.length === 0 && (
+            <p className="comments-status">
+              No comments yet. Be the first to comment.
+            </p>
+          )}
+
+          {!commentsLoading &&
+            comments
+              .filter((comment) => !comment.parentComment)
+              .map((comment) => (
+                <CommentItem
+                  key={comment._id}
+                  comment={comment}
+                  comments={comments}
+                  commentLikes={commentLikes}
+                  commentLiking={commentLiking}
+                  toggleCommentLike={toggleCommentLike}
+                  onReply={(commentId) => {
+                    setReplyingTo(
+                      replyingTo === commentId ? null : commentId
+                    );
+                    setCommentText("");
+                  }}
+                  replyingTo={replyingTo}
+                  commentText={commentText}
+                  setCommentText={setCommentText}
+                  commentSubmitting={commentSubmitting}
+                  setCommentSubmitting={setCommentSubmitting}
+                  setCommentError={setCommentError}
+                  setComments={setComments}
+                  postId={post._id}
+                  setReplyingTo={setReplyingTo}
+                  setLocalCommentsCount={setLocalCommentsCount}
+                />
+              ))}
+
+          <div className="comment-input-row">
+            <input
+              type="text"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Write a comment..."
+              maxLength={500}
+              disabled={commentSubmitting}
+            />
+
+            <button
+              type="button"
+              disabled={!commentText.trim() || commentSubmitting}
+              onClick={async () => {
+                if (!commentText.trim()) return;
+
+                try {
+                  setCommentSubmitting(true);
+                  setCommentError("");
+
+                  const response = await API.post(
+                    `/comments/${post._id}`,
+                    {
+                      content: commentText.trim(),
+                    }
+                  );
+
+                  setComments((current) => [
+                    ...current,
+                    response.data.comment,
+                  ]);
+
+                  setCommentText("");
+
+                  setLocalCommentsCount((count) => count + 1);
+                } catch (error) {
+                  setCommentError(
+                    error.response?.data?.message ||
+                    "Unable to add comment. Please try again."
+                  );
+                } finally {
+                  setCommentSubmitting(false);
+                }
+              }}
+            >
+              {commentSubmitting ? "..." : "Send"}
+            </button>
           </div>
         </div>
-      ))}
-
-    <div className="comment-input-row">
-      <input
-        type="text"
-        value={commentText}
-        onChange={(e) => setCommentText(e.target.value)}
-        placeholder="Write a comment..."
-        maxLength={500}
-        disabled={commentSubmitting}
-      />
-
-      <button
-        type="button"
-        disabled={!commentText.trim() || commentSubmitting}
-        onClick={async () => {
-          if (!commentText.trim()) return;
-
-          try {
-            setCommentSubmitting(true);
-            setCommentError("");
-
-            const response = await API.post(
-              `/comments/${post._id}`,
-              {
-                content: commentText.trim(),
-              }
-            );
-
-            setComments((current) => [
-              ...current,
-              response.data.comment,
-            ]);
-
-            setCommentText("");
-
-            setLocalCommentsCount((count) => count + 1);
-          } catch (error) {
-            setCommentError(
-              error.response?.data?.message ||
-                "Unable to add comment. Please try again."
-            );
-          } finally {
-            setCommentSubmitting(false);
-          }
-        }}
-      >
-        {commentSubmitting ? "..." : "Send"}
-      </button>
-    </div>
-  </div>
-)}
+      )}
       {likeError && <p className="error-state">{likeError}</p>}
     </article>
   );
@@ -608,14 +1043,72 @@ function App() {
   const [posted, setPosted] = useState(false);
   const [composerError, setComposerError] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
+  const [currentPage, setCurrentPage] = useState("home");
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const photoInputRef = useRef(null);
-
+  const [profileUser, setProfileUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postError, setPostError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!selectedUser) return;
 
+      try {
+        const response = await API.get(`/users/${selectedUser}`);
+        setProfileUser(response.data.user);
+      } catch (error) {
+        console.error("Failed to fetch user profile:", error);
+      }
+    };
+
+    fetchUserProfile();
+  }, [selectedUser]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  useEffect(() => {
+    const searchPosts = async () => {
+      const query = searchQuery.trim();
+
+      if (!query) {
+        setSearchResults([]);
+        setUserSearchResults([]);
+        return;
+      }
+
+      try {
+        setSearchLoading(true);
+
+        const response = await API.get(
+          `/posts/search?q=${encodeURIComponent(query)}`
+        );
+
+        setSearchResults(response.data.posts || []);
+
+        const userResponse = await API.get(
+          `/users/search?q=${encodeURIComponent(query)}`
+        );
+
+        setUserSearchResults(userResponse.data.users || []);
+      } catch (error) {
+        console.error("Search failed:", error);
+        setSearchResults([]);
+        setUserSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    };
+
+    const timer = setTimeout(searchPosts, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  const [savedPosts, setSavedPosts] = useState([]);
+  const [loadingSavedPosts, setLoadingSavedPosts] = useState(false);
   useEffect(() => {
     const clearExpiredSession = () => {
       window.location.hash = "login";
@@ -663,7 +1156,25 @@ function App() {
 
     fetchPosts();
   }, [session]);
+  const fetchSavedPosts = async () => {
+    try {
+      setLoadingSavedPosts(true);
 
+      const response = await API.get("/posts/saved");
+      console.log("SAVED POSTS RESPONSE:", response.data);
+      setSavedPosts(response.data.posts || []);
+    } catch (error) {
+      console.error("Failed to fetch saved posts:", error);
+      setSavedPosts([]);
+    } finally {
+      setLoadingSavedPosts(false);
+    }
+  };
+  useEffect(() => {
+    if (active === "Saved") {
+      fetchSavedPosts();
+    }
+  }, [active]);
   const updatePostDraft = (event) => {
     const { name, value } = event.target;
     setPostDraft((current) => ({ ...current, [name]: value }));
@@ -743,7 +1254,7 @@ function App() {
     } catch (error) {
       setComposerError(
         error.response?.data?.message ||
-          "Unable to publish your post. Please try again."
+        "Unable to publish your post. Please try again."
       );
     } finally {
       setIsPublishing(false);
@@ -813,7 +1324,15 @@ function App() {
           <label className="search">
             <Icon name="search" size={19} />
 
-            <input placeholder="Search communities, events, people..." />
+            <input
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setProfileUser(null);
+                setSelectedUser(null);
+              }}
+              placeholder="Search posts..."
+            />
           </label>
 
           <div className="top-actions">
@@ -832,165 +1351,281 @@ function App() {
           </div>
         </header>
 
-        <section className="feed">
-          <div className="feed-heading">
-            <div>
-              <p className="eyebrow">STUDENT COMMUNITY</p>
+        {currentPage === "profile" ? (
+          <ProfilePage
+            profileUser={profileUser}
+            posts={posts}
+            getImageSource={getImageSource}
+            onBack={() => {
+              setCurrentPage("home");
+              setSelectedUser(null);
+              setProfileUser(null);
+            }}
+          />
+        ) : (
 
-              <h1>
-                Good afternoon, {currentUser.name.split(" ")[0]} <span>✦</span>
-              </h1>
+          <section className="feed">
+            {searchQuery.trim() && (
+              <section className="search-results">
+                <div className="search-results-header">
+                  <h2>Search results</h2>
 
-              <p className="subheading">
-                Here's what's happening around your campus.
-              </p>
-            </div>
+                  {searchLoading && (
+                    <span>Searching...</span>
+                  )}
+                </div>
 
-            <button className="filter">
-              For you <span>⌄</span>
-            </button>
-          </div>
 
-          {/* COMPOSER */}
 
-          <section className="composer">
-            <div className="avatar avatar-you">A</div>
-
-            <div className="composer-body">
-             <input
-  ref={photoInputRef}
-  className="composer-file-input"
-  type="file"
-  accept="image/jpeg,image/png,image/webp,image/gif"
-  onChange={selectImage}
-  aria-label="Choose a photo"
-/>
-
-              <input
-                className="composer-title"
-                name="title"
-                value={postDraft.title}
-                onChange={updatePostDraft}
-                placeholder="Give your post a title"
-                maxLength="150"
-              />
-
-              <textarea
-                name="content"
-                value={postDraft.content}
-                onChange={updatePostDraft}
-                placeholder="Share something with your campus..."
-                rows="2"
-              />
-
-              {imagePreview && (
-                <div className="composer-image-preview">
-                  <img src={imagePreview} alt="Selected post preview" />
-                  <div>
-                    <span>{selectedImage?.name}</span>
-                    <div className="image-preview-actions">
-                      <button type="button" onClick={() => photoInputRef.current?.click()}>
-                        Change
-                      </button>
-                      <button type="button" onClick={clearSelectedImage}>
-                        Remove
-                      </button>
+                {!searchLoading && searchResults.length === 0 && (
+                  <p className="search-empty">
+                    No posts found for "{searchQuery}"
+                  </p>
+                )}
+                {!searchLoading && userSearchResults.length > 0 && (
+                  <section className="people-results">
+                    <div className="search-results-header">
+                      <h2>People</h2>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              <div className="composer-foot">
+                    <div className="people-list">
+                      {userSearchResults.map((user) => (
+                        <div
+                          className="person-card"
+                          key={user._id}
+                          onClick={() => {
+
+                            setSelectedUser(user._id);
+                            setCurrentPage("profile");
+                          }}
+                        >
+                          <div className="person-avatar">
+                            {user.name?.charAt(0).toUpperCase()}
+                          </div>
+
+                          <div className="person-info">
+                            <strong>{user.name}</strong>
+                            <span>{user.role || "Student"}</span>
+                            {user.college && <small>{user.college}</small>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {!searchLoading &&
+                  searchResults.map((post) => (
+                    <Post
+                      key={post._id}
+                      post={post}
+                      onAuthorClick={(userId) => {
+                        setSelectedUser(userId);
+                        setCurrentPage("profile");
+                      }}
+                    />
+                  ))}
+              </section>
+            )}
+            {!searchQuery.trim() && (
+              <div className="feed-heading">
                 <div>
-                  <label className="category-picker">
-                    <Icon name="smile" size={18} />
-                    <select
-                      name="category"
-                      value={postDraft.category}
-                      onChange={updatePostDraft}
-                      aria-label="Post category"
-                    >
-                      <option value="general">General</option>
-                      <option value="question">Question</option>
-                      <option value="discussion">Discussion</option>
-                      <option value="announcement">Announcement</option>
-                    </select>
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    disabled={isPublishing}
-                  >
-                    <Icon name="image" size={18} />
-                    {selectedImage ? "Change photo" : "Photo"}
-                  </button>
+                  <p className="eyebrow">STUDENT COMMUNITY</p>
+                  <h1>
+                    Good afternoon, {currentUser.name.split(" ")[0]} <span>✦</span>
+                  </h1>
+                  <p className="subheading">
+                    Here's what's happening around your campus.
+                  </p>
                 </div>
 
-                <button
-                  onClick={publish}
-                  className="publish"
-                  disabled={isPublishing}
-                >
-                  {isPublishing ? "Posting..." : "Post"}
-                  {!isPublishing && <Icon name="arrow" size={16} />}
+                <button className="filter">
+                  For you <span>⌄</span>
                 </button>
               </div>
+            )}
 
-              {composerError && <p className="composer-error">{composerError}</p>}
-            </div>
-          </section>
+            {/* COMPOSER */}
+            {!searchQuery.trim() && (
+              <section className="composer">
+                <div className="avatar avatar-you">A</div>
 
-          {posted && (
-            <div className="new-post">
-              <div className="avatar avatar-you">A</div>
+                <div className="composer-body">
+                  <input
+                    ref={photoInputRef}
+                    className="composer-file-input"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={selectImage}
+                    aria-label="Choose a photo"
+                  />
 
-              <div>
-                <strong>Your post is live!</strong>
-                <p>Your campus community can now see it.</p>
+                  <input
+                    className="composer-title"
+                    name="title"
+                    value={postDraft.title}
+                    onChange={updatePostDraft}
+                    placeholder="Give your post a title"
+                    maxLength="150"
+                  />
+
+                  <textarea
+                    name="content"
+                    value={postDraft.content}
+                    onChange={updatePostDraft}
+                    placeholder="Share something with your campus..."
+                    rows="2"
+                  />
+
+                  {imagePreview && (
+                    <div className="composer-image-preview">
+                      <img src={imagePreview} alt="Selected post preview" />
+                      <div>
+                        <span>{selectedImage?.name}</span>
+                        <div className="image-preview-actions">
+                          <button type="button" onClick={() => photoInputRef.current?.click()}>
+                            Change
+                          </button>
+                          <button type="button" onClick={clearSelectedImage}>
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="composer-foot">
+                    <div>
+                      <label className="category-picker">
+                        <Icon name="smile" size={18} />
+                        <select
+                          name="category"
+                          value={postDraft.category}
+                          onChange={updatePostDraft}
+                          aria-label="Post category"
+                        >
+                          <option value="general">General</option>
+                          <option value="question">Question</option>
+                          <option value="discussion">Discussion</option>
+                          <option value="announcement">Announcement</option>
+                        </select>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={isPublishing}
+                      >
+                        <Icon name="image" size={18} />
+                        {selectedImage ? "Change photo" : "Photo"}
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={publish}
+                      className="publish"
+                      disabled={isPublishing}
+                    >
+                      {isPublishing ? "Posting..." : "Post"}
+                      {!isPublishing && <Icon name="arrow" size={16} />}
+                    </button>
+                  </div>
+
+                  {composerError && <p className="composer-error">{composerError}</p>}
+                </div>
+              </section>
+            )}
+            {posted && (
+              <div className="new-post">
+                <div className="avatar avatar-you">A</div>
+
+                <div>
+                  <strong>Your post is live!</strong>
+                  <p>Your campus community can now see it.</p>
+                </div>
+
+                <button onClick={() => setPosted(false)}>×</button>
               </div>
+            )}
 
-              <button onClick={() => setPosted(false)}>×</button>
+            <div className="feed-label">
+              <span>Latest from your communities</span>
+              <i />
             </div>
-          )}
 
-          <div className="feed-label">
-            <span>Latest from your communities</span>
-            <i />
-          </div>
+            {/* LIVE POSTS */}
 
-          {/* LIVE POSTS */}
+            {loadingPosts && (
+              <div className="loading-state">
+                Loading posts...
+              </div>
+            )}
 
-          {loadingPosts && (
-            <div className="loading-state">
-              Loading posts...
-            </div>
-          )}
+            {!loadingPosts && postError && (
+              <div className="error-state">
+                {postError}
+              </div>
+            )}
 
-          {!loadingPosts && postError && (
-            <div className="error-state">
-              {postError}
-            </div>
-          )}
+            {active === "Saved" ? (
+              <div className="saved-posts-section">
+                <div className="feed-heading">
+                  <div>
+                    <p className="eyebrow">YOUR COLLECTION</p>
+                    <h1>Saved Posts <span>✦</span></h1>
+                    <p className="subheading">
+                      Posts you've bookmarked for later.
+                    </p>
+                  </div>
+                </div>
 
-          {!loadingPosts && !postError && posts.length > 0 && (
-            posts.map((post) => (
-              <Post
-                key={post._id}
-                post={post}
-              />
-            ))
-          )}
+                {loadingSavedPosts ? (
+                  <p>Loading saved posts...</p>
+                ) : savedPosts.length > 0 ? (
+                  savedPosts.map((post) => (
+                    <Post
+                      key={post._id}
+                      post={post}
+                      onAuthorClick={(userId) => {
+                        setSelectedUser(userId);
+                      }}
+                    />
+                  ))
+                ) : (
+                  <div className="empty-saved-posts">
+                    <Icon name="bookmark" size={32} />
+                    <h3>No saved posts yet</h3>
+                    <p>Save a post and it'll appear here.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                {!searchQuery.trim() &&
+                  !loadingPosts &&
+                  !postError &&
+                  posts.length > 0 && (
+                    posts.map((post) => (
+                      <Post key={post._id} post={post}
+                        onAuthorClick={(userId) => {
+                          setSelectedUser(userId);
+                          setCurrentPage("profile");
+                        }} />
+                    ))
+                  )}
 
-          {/* UI FALLBACK */}
+                {/* UI FALLBACK */}
 
-          {!loadingPosts && !postError && posts.length === 0 && (
-            <>
-              <Post fallbackType="photo" />
-              <Post fallbackType="text" />
-            </>
-          )}
-        </section>
+                {!loadingPosts && !postError && posts.length === 0 && (
+                  <>
+                    <Post fallbackType="photo" />
+                    <Post fallbackType="text" />
+                  </>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
       </main>
 
       {/* RIGHT SIDEBAR */}

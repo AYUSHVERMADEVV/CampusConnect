@@ -1,10 +1,16 @@
 const express = require("express");
-const { getMyProfile } = require("../controllers/userController");
+const {
+  getMyProfile,
+  searchUsers,
+  getUserProfile,
+} = require("../controllers/userController");
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 const router = express.Router();
 
 router.get("/profile", protect, getMyProfile);
+router.get("/search", protect, searchUsers);
+
 router.get(
   "/admin-test",
   protect,
@@ -16,4 +22,5 @@ router.get(
     });
   }
 );
+router.get("/:id", protect, getUserProfile);
 module.exports = router;

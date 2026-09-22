@@ -20,6 +20,19 @@ const commentSchema = new mongoose.Schema(
       ref: "Post",
       required: true,
     },
+
+    // Users who liked this comment
+    likes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    parentComment: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Comment",
+  default: null,
+},
   },
   {
     timestamps: true,

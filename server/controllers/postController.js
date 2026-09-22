@@ -32,6 +32,36 @@ const createPost = async (req, res) => {
     });
   }
 };
+const searchPosts = async (req, res) => {
+  try {
+    const query = req.query.q?.trim();
+
+    if (!query) {
+      return res.status(200).json({ posts: [] });
+    }
+
+    const posts = await Post.find({
+      $or: [
+        { title: { $regex: query, $options: "i" } },
+        { content: { $regex: query, $options: "i" } },
+        { category: { $regex: query, $options: "i" } },
+      ],
+    })
+      .populate("author", "name email role")
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.status(200).json({
+      posts,
+    });
+  } catch (error) {
+    console.error("Search Posts Error:", error);
+
+    res.status(500).json({
+      message: "Unable to search posts.",
+    });
+  }
+};
 const getPosts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -46,16 +76,22 @@ const getPosts = async (req, res) => {
       .limit(limit);
 
     const currentUserId = req.user?._id?.toString();
+
     const postsWithLikeStatus = posts.map((post) => {
       const postData = post.toObject();
 
       return {
-        ...postData,
-        likesCount: postData.likes.length,
-        isLiked: currentUserId
-          ? postData.likes.some((like) => like.toString() === currentUserId)
-          : false,
-      };
+  ...postData,
+  likesCount: postData.likes.length,
+  isLiked: currentUserId
+    ? postData.likes.some((like) => like.toString() === currentUserId)
+    : false,
+  isSaved: currentUserId
+    ? postData.savedBy?.some(
+        (userId) => userId.toString() === currentUserId
+      )
+    : false,
+};
     });
 
     const totalPosts = await Post.countDocuments();
@@ -137,6 +173,73 @@ const toggleLikePost = async (req, res) => {
     });
   } catch (error) {
     console.error("Like Post Error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+const toggleSavePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const post = await Post.findById(id);
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    const userId = req.user._id;
+
+    const alreadySaved = post.savedBy.some(
+      (user) => user.toString() === userId.toString()
+    );
+
+    if (alreadySaved) {
+      post.savedBy = post.savedBy.filter(
+        (user) => user.toString() !== userId.toString()
+      );
+    } else {
+      post.savedBy.push(userId);
+    }
+
+    await post.save();
+
+    res.status(200).json({
+      message: alreadySaved
+        ? "Post removed from saved posts"
+        : "Post saved successfully",
+      isSaved: !alreadySaved,
+      savedCount: post.savedBy.length,
+    });
+  } 
+  catch (error) {
+  console.error("SAVE ERROR:", error);
+  console.error("STATUS:", error.response?.status);
+  console.error("DATA:", error.response?.data);
+
+  alert(
+    error.response?.data?.message ||
+    error.message ||
+    "Unable to save post. Please try again."
+  );
+}
+};
+const getSavedPosts = async (req, res) => {
+  try {
+    const posts = await Post.find({
+      savedBy: req.user._id,
+    })
+      .populate("author", "name email role")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      posts,
+    });
+  } catch (error) {
+    console.error("Get Saved Posts Error:", error.message);
 
     res.status(500).json({
       message: "Server error",
@@ -234,6 +337,10 @@ module.exports = {
   getPosts,
   getSinglePost,
   toggleLikePost,
+  toggleSavePost,
+  searchPosts,
+  getSavedPosts,
   deletePost,
   updatePost,
+
 };
