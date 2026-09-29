@@ -232,6 +232,7 @@ export default function EventsPage({ currentUser, onAuthorClick, onBack }) {
     try {
       setRsvpLoading(true);
       await API.delete(`/events/${eventId}`);
+      setEvents((prev) => prev.filter((ev) => ev._id !== eventId));
       setDeleteConfirmId(null);
       closeEventDetail();
     } catch (err) {
@@ -497,7 +498,7 @@ export default function EventsPage({ currentUser, onAuthorClick, onBack }) {
                     )}
                   </div>
 
-                  {eventDetail.isOrganizer && (
+                  {(eventDetail.isOrganizer || eventDetail.canDelete || currentUser?.role === "admin") && (
                     <div>
                       {deleteConfirmId === eventDetail._id ? (
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>

@@ -1,6 +1,7 @@
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
 const Community = require("../models/Community");
+const { createNotification } = require("./notificationController");
 
 const createPost = async (req, res) => {
   try {
@@ -196,6 +197,18 @@ const toggleLikePost = async (req, res) => {
     }
 
     await post.save();
+
+    if (!alreadyLiked) {
+      const authorId = post.author?._id || post.author;
+      if (authorId) {
+        createNotification({
+          recipient: authorId,
+          sender: req.user._id,
+          type: "like",
+          post: post._id,
+        }).catch((err) => console.error("Notification like error:", err.message));
+      }
+    }
 
     res.status(200).json({
       message: alreadyLiked

@@ -25,6 +25,24 @@ export default function CommunitiesPage({
   const [communityPosts, setCommunityPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Delete Community
+  const handleDeleteCommunity = async (communityId) => {
+    try {
+      setIsDeleting(true);
+      await API.delete(`/communities/${communityId}`);
+      setCommunities((prev) => prev.filter((c) => c._id !== communityId));
+      setDeleteConfirmId(null);
+      setSelectedCommunity(null);
+    } catch (err) {
+      console.error("Failed to delete community:", err);
+      alert(err.response?.data?.message || "Could not delete community.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Create Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -295,20 +313,62 @@ export default function CommunitiesPage({
                   </div>
                 </div>
 
-                <button
-                  className={`btn-join-toggle ${
-                    selectedCommunity.isMember ? "joined" : ""
-                  }`}
-                  style={{ minWidth: "140px", height: "42px" }}
-                  onClick={(e) => handleToggleJoin(e, selectedCommunity._id)}
-                  disabled={joiningId === selectedCommunity._id}
-                >
-                  {joiningId === selectedCommunity._id
-                    ? "Updating..."
-                    : selectedCommunity.isMember
-                    ? "✓ Joined"
-                    : "+ Join Community"}
-                </button>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    className={`btn-join-toggle ${
+                      selectedCommunity.isMember ? "joined" : ""
+                    }`}
+                    style={{ minWidth: "140px", height: "42px" }}
+                    onClick={(e) => handleToggleJoin(e, selectedCommunity._id)}
+                    disabled={joiningId === selectedCommunity._id}
+                  >
+                    {joiningId === selectedCommunity._id
+                      ? "Updating..."
+                      : selectedCommunity.isMember
+                      ? "✓ Joined"
+                      : "+ Join Community"}
+                  </button>
+
+                  {(Boolean(selectedCommunity.canDelete) ||
+                    (currentUser &&
+                      (currentUser._id || currentUser.id)?.toString() ===
+                        (selectedCommunity.createdBy?._id || selectedCommunity.createdBy)?.toString()) ||
+                    currentUser?.role === "admin") && (
+                    <div>
+                      {deleteConfirmId === selectedCommunity._id ? (
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <span style={{ fontSize: "12.5px", color: "#dc2626", fontWeight: 600 }}>
+                            Are you sure?
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-delete-community"
+                            onClick={() => handleDeleteCommunity(selectedCommunity._id)}
+                            disabled={isDeleting}
+                          >
+                            {isDeleting ? "Deleting..." : "Yes, Delete"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setDeleteConfirmId(null)}
+                            disabled={isDeleting}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-delete-community"
+                          onClick={() => setDeleteConfirmId(selectedCommunity._id)}
+                        >
+                          Delete Community
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <p className="community-detail-desc">{selectedCommunity.description}</p>
@@ -771,7 +831,7 @@ export default function CommunitiesPage({
                   className="btn-primary"
                   onClick={() => setActiveTab("all")}
                 >
-                  Explore All Communities
+                  Browse All Communities
                 </button>
               ) : (
                 <button

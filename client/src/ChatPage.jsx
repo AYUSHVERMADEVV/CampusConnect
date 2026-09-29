@@ -34,13 +34,24 @@ function ChatPage({ chatUser, currentUser, onBack }) {
     }
   };
 
-  // Fetch conversation on mount or when chatUser changes
+  // Fetch conversation and mark as read on mount or when chatUser changes
   useEffect(() => {
     let isMounted = true;
 
     if (!chatUserId) {
       return;
     }
+
+    const markAsRead = async () => {
+      try {
+        await API.patch(`/messages/${chatUserId}/read`);
+        window.dispatchEvent(
+          new CustomEvent("conversation-read", { detail: { userId: chatUserId } })
+        );
+      } catch (err) {
+        console.warn("Could not mark messages read:", err?.message || err);
+      }
+    };
 
     const fetchConversation = async () => {
       setLoading(true);
@@ -67,6 +78,7 @@ function ChatPage({ chatUser, currentUser, onBack }) {
       }
     };
 
+    markAsRead();
     fetchConversation();
 
     return () => {

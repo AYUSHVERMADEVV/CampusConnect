@@ -1,5 +1,6 @@
 const Comment = require("../models/Comment");
 const Post = require("../models/Post");
+const { createNotification } = require("./notificationController");
 
 const createComment = async (req, res) => {
   try {
@@ -21,16 +22,41 @@ const createComment = async (req, res) => {
     }
 
     const comment = await Comment.create({
-  content,
-  author: req.user._id,
-  post: postId,
-  parentComment: parentComment || null,
-});
+      content,
+      author: req.user._id,
+      post: postId,
+      parentComment: parentComment || null,
+    });
 
     await comment.populate("author", "name email role");
 
     post.commentsCount += 1;
     await post.save();
+
+    if (parentComment) {
+      const parentDoc = await Comment.findById(parentComment);
+      const parentAuthorId = parentDoc?.author?._id || parentDoc?.author;
+      if (parentAuthorId) {
+        createNotification({
+          recipient: parentAuthorId,
+          sender: req.user._id,
+          type: "reply",
+          post: postId,
+          comment: comment._id,
+        }).catch((err) => console.error("Notification reply error:", err.message));
+      }
+    } else {
+      const postAuthorId = post.author?._id || post.author;
+      if (postAuthorId) {
+        createNotification({
+          recipient: postAuthorId,
+          sender: req.user._id,
+          type: "comment",
+          post: postId,
+          comment: comment._id,
+        }).catch((err) => console.error("Notification comment error:", err.message));
+      }
+    }
 
     res.status(201).json({
       message: "Comment added successfully",

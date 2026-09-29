@@ -122,12 +122,46 @@ function populateItem(item, path, select) {
     path === "sender" ||
     path === "receiver" ||
     path === "createdBy" ||
-    path === "organizer"
+    path === "organizer" ||
+    path === "postedBy" ||
+    path === "recipient"
   ) {
     const userId = item[path]?._id || item[path];
     const user = store.users.find((u) => u._id.toString() === userId?.toString());
     if (user) {
-      item[path] = filterFields(user, select || "name email role profilePicture college");
+      item[path] = filterFields(user, select || "name email role profilePicture avatar college branch");
+    }
+  } else if (path === "post") {
+    const postId = item.post?._id || item.post;
+    if (postId) {
+      const post = store.posts.find((p) => p._id.toString() === postId?.toString());
+      if (post) {
+        item.post = filterFields(post, select || "title content image category");
+      }
+    }
+  } else if (path === "comment") {
+    const commentId = item.comment?._id || item.comment;
+    if (commentId) {
+      const comm = store.comments.find((c) => c._id.toString() === commentId?.toString());
+      if (comm) {
+        item.comment = filterFields(comm, select || "content");
+      }
+    }
+  } else if (path === "event") {
+    const eventId = item.event?._id || item.event;
+    if (eventId) {
+      const ev = store.events.find((e) => e._id.toString() === eventId?.toString());
+      if (ev) {
+        item.event = filterFields(ev, select || "title date location image");
+      }
+    }
+  } else if (path === "message") {
+    const messageId = item.message?._id || item.message;
+    if (messageId) {
+      const msg = store.messages.find((m) => m._id.toString() === messageId?.toString());
+      if (msg) {
+        item.message = filterFields(msg, select || "content");
+      }
     }
   } else if (path === "members" || path === "attendees") {
     const list = item[path];
@@ -201,36 +235,48 @@ const store = {
     createDoc({
       _id: "660000000000000000000001",
       name: "Alex Johnson",
+      username: "alexjohnson",
       email: "alex@campus.edu",
       password: defaultPasswordHash,
       role: "student",
       college: "Stanford University",
+      university: "Stanford",
+      course: "B.Tech",
       branch: "Computer Science",
       year: "3",
+      bio: "CS sophomore building open source web apps & AI tools. Love hackathons, coffee, and distributed systems.",
       profilePicture: "",
       skills: ["React", "JavaScript", "Python"],
     }, []),
     createDoc({
       _id: "660000000000000000000002",
       name: "Ananya Sharma",
+      username: "ananya_design",
       email: "ananya@campus.edu",
       password: defaultPasswordHash,
       role: "student",
       college: "Design Institute",
+      university: "National Design University",
+      course: "B.Des",
       branch: "Interaction Design",
       year: "2",
+      bio: "UI/UX enthusiast exploring campus social dynamics and minimal interface typography.",
       profilePicture: "",
       skills: ["UI/UX", "Figma", "Design Systems"],
     }, []),
     createDoc({
       _id: "660000000000000000000003",
       name: "Rohan Patel",
+      username: "rohanp",
       email: "rohan@campus.edu",
       password: defaultPasswordHash,
       role: "student",
       college: "Institute of Technology",
+      university: "State Technical University",
+      course: "BCA",
       branch: "Information Technology",
       year: "4",
+      bio: "Senior year IT undergrad. Cloud enthusiast, competitive programmer, and tech circle lead.",
       profilePicture: "",
       skills: ["Node.js", "Docker", "AWS"],
     }, []),
@@ -240,6 +286,8 @@ const store = {
   messages: [],
   communities: [],
   events: [],
+  lostFound: [],
+  notifications: [],
 };
 
 // Seed initial communities
@@ -453,6 +501,9 @@ const MemoryUser = {
     return new MemoryQuery(
       new Promise((resolve) => {
         let results = [...store.users];
+        if (query?.role) {
+          results = results.filter((user) => user.role === query.role);
+        }
         if (query?.$or) {
           results = results.filter((user) => {
             return query.$or.some((condition) => {
@@ -468,6 +519,46 @@ const MemoryUser = {
     );
   },
 
+  async countDocuments(query) {
+    if (!query || Object.keys(query).length === 0) {
+      return (store.users || []).length;
+    }
+    let results = [...(store.users || [])];
+    if (query.role) {
+      results = results.filter((u) => u.role === query.role);
+    }
+    if (query.$or) {
+      results = results.filter((user) => {
+        return query.$or.some((condition) => {
+          const [field, pattern] = Object.entries(condition)[0] || [];
+          if (!field || !pattern?.$regex) return false;
+          const val = user[field] || "";
+          return new RegExp(pattern.$regex, pattern.$options || "i").test(val);
+        });
+      });
+    }
+    return results.length;
+  },
+
+  async findByIdAndUpdate(id, update, options = {}) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const user = store.users.find((u) => u._id.toString() === idStr);
+    if (!user) return null;
+    const actualUpdate = update.$set ? { ...update.$set } : { ...update };
+    Object.assign(user, actualUpdate, { updatedAt: new Date() });
+    return user;
+  },
+
+  async findByIdAndDelete(id) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const idx = (store.users || []).findIndex((u) => u._id.toString() === idStr);
+    if (idx !== -1) {
+      const [deleted] = store.users.splice(idx, 1);
+      return deleted;
+    }
+    return null;
+  },
+
   async create(data) {
     const user = createDoc(
       {
@@ -475,6 +566,10 @@ const MemoryUser = {
         role: data.role || "student",
         skills: data.skills || [],
         profilePicture: data.profilePicture || "",
+        bio: data.bio || "",
+        university: data.university || "",
+        course: data.course || "",
+        username: data.username || "",
       },
       store.users
     );
@@ -557,6 +652,20 @@ const MemoryPost = {
       return deleted;
     }
     return null;
+  },
+
+  async deleteMany(query) {
+    let count = 0;
+    if (query?.community) {
+      const commId = (query.community?._id || query.community).toString();
+      const initialLen = store.posts.length;
+      store.posts = store.posts.filter((p) => {
+        const pCommId = (p.community?._id || p.community)?.toString();
+        return pCommId !== commId;
+      });
+      count = initialLen - store.posts.length;
+    }
+    return { acknowledged: true, deletedCount: count };
   },
 
   async findByIdAndUpdate(id, update) {
@@ -673,6 +782,31 @@ const MemoryMessage = {
     store.messages.push(msg);
     return msg;
   },
+
+  async updateMany(query, update) {
+    let modifiedCount = 0;
+    const receiverId = (query?.receiver?._id || query?.receiver)?.toString();
+    const senderId = (query?.sender?._id || query?.sender)?.toString();
+
+    for (const msg of store.messages) {
+      const msgReceiverId = (msg.receiver?._id || msg.receiver)?.toString();
+      const msgSenderId = (msg.sender?._id || msg.sender)?.toString();
+
+      const matchReceiver = !receiverId || msgReceiverId === receiverId;
+      const matchSender = !senderId || msgSenderId === senderId;
+      const matchIsRead = query?.isRead === undefined || msg.isRead === query.isRead;
+
+      if (matchReceiver && matchSender && matchIsRead) {
+        if (update?.$set) {
+          Object.assign(msg, update.$set);
+        } else if (update) {
+          Object.assign(msg, update);
+        }
+        modifiedCount++;
+      }
+    }
+    return { acknowledged: true, modifiedCount };
+  },
 };
 
 // Memory Community Model
@@ -754,6 +888,18 @@ const MemoryCommunity = {
     );
     store.communities.unshift(community);
     return community;
+  },
+
+  async findByIdAndDelete(id) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const idx = (store.communities || []).findIndex(
+      (c) => c._id.toString() === idStr
+    );
+    if (idx !== -1) {
+      const [deleted] = store.communities.splice(idx, 1);
+      return deleted;
+    }
+    return null;
   },
 
   async countDocuments() {
@@ -858,6 +1004,253 @@ const MemoryEvent = {
   },
 };
 
+// Memory Lost & Found Model
+const MemoryLostFound = {
+  find(query) {
+    return new MemoryQuery(
+      new Promise((resolve) => {
+        let results = [...(store.lostFound || [])];
+        if (query?.type) {
+          results = results.filter((item) => item.type === query.type);
+        }
+        if (query?.category && query.category !== "All") {
+          results = results.filter(
+            (item) => item.category?.toLowerCase() === query.category.toLowerCase()
+          );
+        }
+        if (query?.status && query.status !== "all") {
+          results = results.filter((item) => item.status === query.status);
+        }
+        if (query?.postedBy) {
+          const pbId = (query.postedBy?._id || query.postedBy)?.toString();
+          results = results.filter(
+            (item) => (item.postedBy?._id || item.postedBy)?.toString() === pbId
+          );
+        }
+        if (query?.$or) {
+          results = results.filter((item) => {
+            return query.$or.some((condition) => {
+              const [field, pattern] = Object.entries(condition)[0] || [];
+              if (!field || !pattern?.$regex) return false;
+              const val = item[field] || "";
+              return new RegExp(pattern.$regex, pattern.$options || "i").test(val);
+            });
+          });
+        }
+        resolve(results);
+      })
+    );
+  },
+
+  findById(id) {
+    return new MemoryQuery(
+      new Promise((resolve) => {
+        const idStr = (id?._id ? id._id : id)?.toString();
+        const item = (store.lostFound || []).find(
+          (lf) => lf._id.toString() === idStr
+        );
+        resolve(item || null);
+      })
+    );
+  },
+
+  async findByIdAndUpdate(id, update) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const item = (store.lostFound || []).find((lf) => lf._id.toString() === idStr);
+    if (!item) return null;
+    const actualUpdate = update.$set ? { ...update.$set } : { ...update };
+    Object.assign(item, actualUpdate, { updatedAt: new Date() });
+    return item;
+  },
+
+  async findByIdAndDelete(id) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const idx = (store.lostFound || []).findIndex((lf) => lf._id.toString() === idStr);
+    if (idx !== -1) {
+      const [deleted] = store.lostFound.splice(idx, 1);
+      return deleted;
+    }
+    return null;
+  },
+
+  async create(data) {
+    const posterId = data.postedBy?._id || data.postedBy;
+    const item = createDoc(
+      {
+        ...data,
+        postedBy: new MemoryId(posterId.toString()),
+        status: data.status || "active",
+        date: data.date instanceof Date ? data.date : new Date(data.date),
+      },
+      store.lostFound
+    );
+    if (!store.lostFound) store.lostFound = [];
+    store.lostFound.unshift(item);
+    return item;
+  },
+
+  async countDocuments(query) {
+    let results = [...(store.lostFound || [])];
+    if (query?.status && query.status !== "all") {
+      results = results.filter((item) => item.status === query.status);
+    }
+    return results.length;
+  },
+};
+
+const MemoryNotification = {
+  find(query = {}) {
+    return new MemoryQuery(
+      new Promise((resolve) => {
+        let results = [...(store.notifications || [])];
+        if (query.recipient) {
+          const rId = (query.recipient?._id || query.recipient)?.toString();
+          results = results.filter((n) => (n.recipient?._id || n.recipient)?.toString() === rId);
+        }
+        if (typeof query.read === "boolean") {
+          results = results.filter((n) => n.read === query.read);
+        }
+        if (query.type) {
+          results = results.filter((n) => n.type === query.type);
+        }
+        resolve(results);
+      })
+    );
+  },
+
+  findOne(query = {}) {
+    return new MemoryQuery(
+      new Promise((resolve) => {
+        let results = [...(store.notifications || [])];
+        if (query.recipient) {
+          const rId = (query.recipient?._id || query.recipient)?.toString();
+          results = results.filter((n) => (n.recipient?._id || n.recipient)?.toString() === rId);
+        }
+        if (query.sender) {
+          const sId = (query.sender?._id || query.sender)?.toString();
+          results = results.filter((n) => (n.sender?._id || n.sender)?.toString() === sId);
+        }
+        if (query.type) {
+          results = results.filter((n) => n.type === query.type);
+        }
+        if (query.post) {
+          const pId = (query.post?._id || query.post)?.toString();
+          results = results.filter((n) => (n.post?._id || n.post)?.toString() === pId);
+        }
+        if (query.comment) {
+          const cmId = (query.comment?._id || query.comment)?.toString();
+          results = results.filter((n) => (n.comment?._id || n.comment)?.toString() === cmId);
+        }
+        if (query.community) {
+          const cId = (query.community?._id || query.community)?.toString();
+          results = results.filter((n) => (n.community?._id || n.community)?.toString() === cId);
+        }
+        if (query.event) {
+          const eId = (query.event?._id || query.event)?.toString();
+          results = results.filter((n) => (n.event?._id || n.event)?.toString() === eId);
+        }
+        resolve(results[0] || null);
+      })
+    );
+  },
+
+  findById(id) {
+    return new MemoryQuery(
+      new Promise((resolve) => {
+        const idStr = (id?._id ? id._id : id)?.toString();
+        const item = (store.notifications || []).find(
+          (n) => n._id.toString() === idStr
+        );
+        resolve(item || null);
+      })
+    );
+  },
+
+  async findByIdAndUpdate(id, update) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const item = (store.notifications || []).find((n) => n._id.toString() === idStr);
+    if (!item) return null;
+    const actualUpdate = update.$set ? { ...update.$set } : { ...update };
+    Object.assign(item, actualUpdate, { updatedAt: new Date() });
+    return item;
+  },
+
+  async findByIdAndDelete(id) {
+    const idStr = (id?._id ? id._id : id)?.toString();
+    const idx = (store.notifications || []).findIndex((n) => n._id.toString() === idStr);
+    if (idx !== -1) {
+      const [deleted] = store.notifications.splice(idx, 1);
+      return deleted;
+    }
+    return null;
+  },
+
+  async updateMany(query, update) {
+    let matchedCount = 0;
+    const rId = (query.recipient?._id || query.recipient)?.toString();
+    const actualUpdate = update.$set ? { ...update.$set } : { ...update };
+    for (const notif of store.notifications || []) {
+      if (!rId || (notif.recipient?._id || notif.recipient)?.toString() === rId) {
+        if (typeof query.read !== "boolean" || notif.read === query.read) {
+          Object.assign(notif, actualUpdate, { updatedAt: new Date() });
+          matchedCount++;
+        }
+      }
+    }
+    return { acknowledged: true, modifiedCount: matchedCount, matchedCount };
+  },
+
+  async deleteMany(query) {
+    let deletedCount = 0;
+    const rId = (query.recipient?._id || query.recipient)?.toString();
+    if (!store.notifications) return { deletedCount: 0 };
+    store.notifications = store.notifications.filter((notif) => {
+      const match = !rId || (notif.recipient?._id || notif.recipient)?.toString() === rId;
+      if (match) {
+        deletedCount++;
+        return false;
+      }
+      return true;
+    });
+    return { acknowledged: true, deletedCount };
+  },
+
+  async create(data) {
+    const recipientId = data.recipient?._id || data.recipient;
+    const senderId = data.sender?._id || data.sender;
+    const item = createDoc(
+      {
+        ...data,
+        recipient: new MemoryId(recipientId.toString()),
+        sender: new MemoryId(senderId.toString()),
+        type: data.type,
+        post: data.post ? new MemoryId((data.post?._id || data.post).toString()) : null,
+        comment: data.comment ? new MemoryId((data.comment?._id || data.comment).toString()) : null,
+        community: data.community ? new MemoryId((data.community?._id || data.community).toString()) : null,
+        event: data.event ? new MemoryId((data.event?._id || data.event).toString()) : null,
+        message: data.message ? new MemoryId((data.message?._id || data.message).toString()) : null,
+        read: Boolean(data.read),
+      },
+      store.notifications
+    );
+    if (!store.notifications) store.notifications = [];
+    store.notifications.unshift(item);
+    return item;
+  },
+
+  async countDocuments(query = {}) {
+    let results = [...(store.notifications || [])];
+    if (query.recipient) {
+      const rId = (query.recipient?._id || query.recipient)?.toString();
+      results = results.filter((n) => (n.recipient?._id || n.recipient)?.toString() === rId);
+    }
+    if (typeof query.read === "boolean") {
+      results = results.filter((n) => n.read === query.read);
+    }
+    return results.length;
+  },
+};
+
 module.exports = {
   User: MemoryUser,
   Post: MemoryPost,
@@ -865,5 +1258,7 @@ module.exports = {
   Message: MemoryMessage,
   Community: MemoryCommunity,
   Event: MemoryEvent,
+  LostFound: MemoryLostFound,
+  Notification: MemoryNotification,
   store,
 };

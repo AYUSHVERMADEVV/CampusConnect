@@ -1,5 +1,6 @@
 const Community = require("../models/Community");
 const Post = require("../models/Post");
+const { createNotification } = require("./notificationController");
 
 /**
  * Get all communities with optional search and category filter
@@ -38,10 +39,18 @@ const getCommunities = async (req, res) => {
           members.some((m) => (m?._id || m)?.toString() === currentUserId)
       );
 
+      const creatorId = (commObj.createdBy?._id || commObj.createdBy)?.toString();
+      const isCreator = Boolean(currentUserId && creatorId === currentUserId);
+      const canDelete = Boolean(
+        currentUserId && (isCreator || req.user?.role === "admin")
+      );
+
       return {
         ...commObj,
         membersCount: members.length,
         isMember,
+        isCreator,
+        canDelete,
       };
     });
 
@@ -86,13 +95,23 @@ const getSingleCommunity = async (req, res) => {
         ? community.toObject()
         : { ...community };
 
+    const creatorId = (commObj.createdBy?._id || commObj.createdBy)?.toString();
+    const isCreator = Boolean(currentUserId && creatorId === currentUserId);
+    const canDelete = Boolean(
+      currentUserId && (isCreator || req.user?.role === "admin")
+    );
+
     res.status(200).json({
       community: {
         ...commObj,
         membersCount: members.length,
         isMember,
+        isCreator,
+        canDelete,
       },
       isMember,
+      isCreator,
+      canDelete,
       membersCount: members.length,
     });
   } catch (error) {
@@ -211,6 +230,15 @@ const joinCommunity = async (req, res) => {
     community.members.push(req.user._id);
     await community.save();
 
+    if (community.createdBy) {
+      createNotification({
+        recipient: community.createdBy,
+        sender: req.user._id,
+        type: "community",
+        community: community._id,
+      }).catch((err) => console.error("Notification community error:", err.message));
+    }
+
     res.status(200).json({
       message: "Joined community successfully",
       community,
@@ -324,6 +352,51 @@ const getCommunityPosts = async (req, res) => {
   }
 };
 
+/**
+ * Delete a community (creator or admin only)
+ */
+const deleteCommunity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user._id.toString();
+
+    const community = await Community.findById(id);
+
+    if (!community) {
+      return res.status(404).json({
+        message: "Community not found",
+      });
+    }
+
+    const creatorId = (community.createdBy?._id || community.createdBy)?.toString();
+
+    if (creatorId !== currentUserId && req.user.role !== "admin") {
+      return res.status(403).json({
+        message:
+          "You are not authorized to delete this community. Only the creator or an admin can delete it.",
+      });
+    }
+
+    // Cascade delete any community posts
+    try {
+      await Post.deleteMany({ community: id });
+    } catch (postErr) {
+      console.warn("Could not delete community posts:", postErr.message);
+    }
+
+    await Community.findByIdAndDelete(id);
+
+    res.status(200).json({
+      message: "Community deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete Community Error:", error);
+    res.status(500).json({
+      message: "Unable to delete community",
+    });
+  }
+};
+
 module.exports = {
   getCommunities,
   getSingleCommunity,
@@ -331,4 +404,6 @@ module.exports = {
   joinCommunity,
   leaveCommunity,
   getCommunityPosts,
+  deleteCommunity,
 };
+

@@ -48,6 +48,26 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
+    bio: {
+      type: String,
+      default: "",
+    },
+
+    university: {
+      type: String,
+      default: "",
+    },
+
+    course: {
+      type: String,
+      default: "",
+    },
+
+    username: {
+      type: String,
+      default: "",
+    },
+
     skills: {
       type: [String],
       default: [],

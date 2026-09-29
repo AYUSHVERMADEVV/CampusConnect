@@ -4,9 +4,45 @@ import "./App.css";
 import "./auth.css";
 import "./composer.css";
 import ProfilePage from "./ProfilePage";
+import UserAvatar from "./UserAvatar";
+import { getImageSource } from "./imageUtils";
 import ChatPage from "./ChatPage";
 import CommunitiesPage from "./CommunitiesPage";
 import EventsPage from "./EventsPage";
+import MessagesPage from "./MessagesPage";
+import LostFoundPage from "./LostFoundPage";
+import NotificationPanel from "./NotificationPanel";
+import SettingsPage from "./SettingsPage";
+import AdminDashboardPage from "./AdminDashboardPage";
+
+function getIndiaGreeting() {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date());
+    const hourVal = parts.find((p) => p.type === "hour")?.value || "0";
+    const minVal = parts.find((p) => p.type === "minute")?.value || "0";
+    const hour = parseInt(hourVal, 10) % 24;
+    const minute = parseInt(minVal, 10);
+    const totalMinutes = hour * 60 + minute;
+
+    if (totalMinutes >= 5 * 60 && totalMinutes < 12 * 60) {
+      return "Good morning";
+    } else if (totalMinutes >= 12 * 60 && totalMinutes < 17 * 60) {
+      return "Good afternoon";
+    } else if (totalMinutes >= 17 * 60 && totalMinutes < 21 * 60) {
+      return "Good evening";
+    } else {
+      return "Good night";
+    }
+  } catch {
+    return "Good day";
+  }
+}
 
 const Icon = ({ name, size = 20 }) => {
   const paths = {
@@ -14,6 +50,13 @@ const Icon = ({ name, size = 20 }) => {
       <>
         <path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         <path d="M9 21v-6h6v6" />
+      </>
+    ),
+
+    box: (
+      <>
+        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
       </>
     ),
 
@@ -45,6 +88,12 @@ const Icon = ({ name, size = 20 }) => {
       <>
         <circle cx="12" cy="12" r="3" />
         <path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" />
+      </>
+    ),
+
+    shield: (
+      <>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </>
     ),
 
@@ -140,17 +189,13 @@ const Icon = ({ name, size = 20 }) => {
 
 const navItems = [
   ["home", "Home"],
-  ["compass", "Explore"],
+  ["message", "Messages"],
   ["users", "Communities"],
   ["calendar", "Events"],
   ["bookmark", "Saved"],
+  ["box", "Lost & Found"],
+  ["settings", "Settings"],
 ];
-
-const getImageSource = (imageUrl) => {
-  if (!imageUrl || imageUrl.startsWith("http")) return imageUrl;
-
-  return `${API.defaults.baseURL.replace(/\/api$/, "")}${imageUrl}`;
-};
 
 const readSession = () => {
   const token = localStorage.getItem("token");
@@ -225,7 +270,7 @@ function AuthScreen({ onAuthenticated }) {
         <a className="brand auth-brand" href="#login">
           <span className="brand-mark">C</span>
           <span>
-            Campus<span>Connect</span>
+            Campus <span>Hub</span>
           </span>
         </a>
 
@@ -281,13 +326,13 @@ function AuthScreen({ onAuthenticated }) {
           {error && <p className="auth-error">{error}</p>}
 
           <button className="auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? "Please wait..." : isRegistering ? "Create account" : "Sign in to CampusConnect"}
+            {isSubmitting ? "Please wait..." : isRegistering ? "Create account" : "Sign in to Campus Hub"}
             {!isSubmitting && <Icon name="arrow" size={17} />}
           </button>
         </form>
 
         <p className="auth-switch">
-          {isRegistering ? "Already part of CampusConnect?" : "New to CampusConnect?"}
+          {isRegistering ? "Already part of Campus Hub?" : "New to Campus Hub?"}
           <button onClick={() => switchMode(isRegistering ? "login" : "register")}>
             {isRegistering ? "Sign in" : "Create an account"}
           </button>
@@ -691,7 +736,10 @@ function Post({
     (fallbackType === "photo" ? "Design Society" : "Tech Society");
 
   return (
-    <article className="post-card">
+    <article
+      id={post?._id ? `post-${post._id}` : undefined}
+      className="post-card"
+    >
       <div className="post-head">
         <div
           className="post-author"
@@ -1052,12 +1100,39 @@ function App() {
   const photoInputRef = useRef(null);
   const [profileUser, setProfileUser] = useState(null);
   const [chatUser, setChatUser] = useState(null);
+  const [chatReturnPage, setChatReturnPage] = useState("messages");
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postError, setPostError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
+
+  // Sync fresh profile data from server on login / refresh
+  useEffect(() => {
+    if (!session?.token) return;
+
+    API.get("/users/profile")
+      .then((res) => {
+        if (res.data?.user) {
+          const freshUser = res.data.user;
+          setSession((prev) => {
+            if (!prev) return prev;
+            const merged = { ...prev.user, ...freshUser };
+            localStorage.setItem("user", JSON.stringify(merged));
+            return { ...prev, user: merged };
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not sync user profile:", err.message);
+      });
+  }, [session?.token]);
+
+  useEffect(() => {
+    document.title = "Campus Hub";
+  }, []);
+
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (!selectedUser) return;
@@ -1067,6 +1142,10 @@ function App() {
         setProfileUser(response.data.user);
       } catch (error) {
         console.error("Failed to fetch user profile:", error);
+        const myId = currentUser?._id || currentUser?.id;
+        if (selectedUser === myId && currentUser) {
+          setProfileUser(currentUser);
+        }
       }
     };
 
@@ -1113,6 +1192,116 @@ function App() {
   }, [searchQuery]);
   const [savedPosts, setSavedPosts] = useState([]);
   const [loadingSavedPosts, setLoadingSavedPosts] = useState(false);
+
+  // Notification State
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+  const fetchUnreadCount = async () => {
+    if (!localStorage.getItem("token")) return;
+    try {
+      const res = await API.get("/notifications/unread-count");
+      setUnreadCount(res?.data?.unreadCount || 0);
+    } catch (err) {
+      console.warn("Could not fetch unread count:", err?.message || err);
+    }
+  };
+
+  const fetchNotifications = async () => {
+    if (!localStorage.getItem("token")) return;
+    try {
+      setLoadingNotifications(true);
+      const res = await API.get("/notifications?limit=30");
+      setNotifications(res?.data?.notifications || []);
+      setUnreadCount(res?.data?.unreadCount || 0);
+    } catch (err) {
+      console.warn("Could not fetch notifications:", err?.message || err);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    if (session) {
+      fetchUnreadCount();
+      // Polling every 25 seconds for new notifications
+      const interval = setInterval(fetchUnreadCount, 25000);
+      return () => clearInterval(interval);
+    }
+  }, [session]);
+
+  const handleMarkAsRead = async (notificationId) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n._id === notificationId ? { ...n, read: true } : n))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await API.patch(`/notifications/${notificationId}/read`);
+    } catch (err) {
+      console.warn("Failed to mark notification read:", err?.message || err);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnreadCount(0);
+    try {
+      await API.patch("/notifications/read-all");
+    } catch (err) {
+      console.warn("Failed to mark all read:", err?.message || err);
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId) => {
+    const target = notifications.find((n) => n._id === notificationId);
+    if (target && !target.read) {
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+    setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
+    try {
+      await API.delete(`/notifications/${notificationId}`);
+    } catch (err) {
+      console.warn("Failed to delete notification:", err?.message || err);
+    }
+  };
+
+  const handleNotificationNavigate = (notification) => {
+    setIsNotificationsOpen(false);
+
+    if (notification.type === "message") {
+      if (notification.sender) {
+        setChatUser(notification.sender);
+        setChatReturnPage("messages");
+        setCurrentPage("chat");
+      }
+    } else if (notification.type === "community") {
+      setCurrentPage("communities");
+      setActive("Communities");
+    } else if (notification.type === "event") {
+      setCurrentPage("events");
+      setActive("Events");
+    } else if (notification.type === "lost_found") {
+      setCurrentPage("lostfound");
+      setActive("Lost & Found");
+    } else {
+      // like, comment, reply -> navigate to home and scroll to post
+      setCurrentPage("home");
+      setActive("Home");
+      const targetPostId = notification.post?._id || notification.post;
+      if (targetPostId) {
+        setTimeout(() => {
+          const postEl = document.getElementById(`post-${targetPostId}`);
+          if (postEl) {
+            postEl.scrollIntoView({ behavior: "smooth", block: "center" });
+            postEl.classList.add("post-highlight");
+            setTimeout(() => postEl.classList.remove("post-highlight"), 2500);
+          }
+        }, 300);
+      }
+    }
+  };
   useEffect(() => {
     const clearExpiredSession = () => {
       window.location.hash = "login";
@@ -1175,10 +1364,17 @@ function App() {
     }
   };
   useEffect(() => {
-    if (active === "Saved") {
+    if (active === "Saved" || currentPage === "saved") {
       fetchSavedPosts();
     }
-  }, [active]);
+  }, [active, currentPage]);
+
+  useEffect(() => {
+    if (currentPage === "admin" && session?.user?.role !== "admin") {
+      setCurrentPage("home");
+      setActive("Home");
+    }
+  }, [currentPage, session?.user?.role]);
   const updatePostDraft = (event) => {
     const { name, value } = event.target;
     setPostDraft((current) => ({ ...current, [name]: value }));
@@ -1280,64 +1476,85 @@ function App() {
           <span className="brand-mark">C</span>
 
           <span>
-            Campus<span>Connect</span>
+            Campus <span>Hub</span>
           </span>
         </a>
 
         <nav className="main-nav">
-          {navItems.map(([icon, label]) => (
-            <button
-              key={label}
-              onClick={() => {
-                setActive(label);
-                if (label === "Communities") {
-                  setCurrentPage("communities");
+          {[
+            ...navItems.slice(0, 6),
+            ...(currentUser?.role === "admin" ? [["shield", "Admin Dashboard"]] : []),
+            ...navItems.slice(6),
+          ].map(([icon, label]) => {
+            const isActive =
+              (label === "Home" && currentPage === "home" && !selectedUser) ||
+              (label === "Messages" && (currentPage === "messages" || (currentPage === "chat" && chatReturnPage === "messages"))) ||
+              (label === "Communities" && currentPage === "communities") ||
+              (label === "Events" && currentPage === "events") ||
+              (label === "Saved" && currentPage === "saved") ||
+              (label === "Lost & Found" && (currentPage === "lostfound" || (currentPage === "chat" && chatReturnPage === "lostfound"))) ||
+              (label === "Admin Dashboard" && currentPage === "admin") ||
+              (label === "Settings" && currentPage === "settings");
+
+            return (
+              <button
+                key={label}
+                onClick={() => {
+                  setActive(label);
                   setProfileUser(null);
                   setSelectedUser(null);
                   setSearchQuery("");
-                } else if (label === "Events") {
-                  setCurrentPage("events");
-                  setProfileUser(null);
-                  setSelectedUser(null);
-                  setSearchQuery("");
-                } else if (label === "Home" || label === "Saved") {
-                  setCurrentPage("home");
-                  setProfileUser(null);
-                  setSelectedUser(null);
-                }
-              }}
-              className={
-                (active === label &&
-                  (label !== "Communities" || currentPage === "communities") &&
-                  (label !== "Events" || currentPage === "events")) ||
-                (label === "Communities" && currentPage === "communities") ||
-                (label === "Events" && currentPage === "events")
-                  ? "active"
-                  : ""
-              }
-            >
-              <Icon name={icon} />
-              <span>{label}</span>
-            </button>
-          ))}
+                  if (label === "Home") {
+                    setCurrentPage("home");
+                  } else if (label === "Messages") {
+                    setCurrentPage("messages");
+                  } else if (label === "Communities") {
+                    setCurrentPage("communities");
+                  } else if (label === "Events") {
+                    setCurrentPage("events");
+                  } else if (label === "Saved") {
+                    setCurrentPage("saved");
+                  } else if (label === "Lost & Found") {
+                    setCurrentPage("lostfound");
+                  } else if (label === "Admin Dashboard") {
+                    setCurrentPage("admin");
+                  } else if (label === "Settings") {
+                    setCurrentPage("settings");
+                  }
+                }}
+                className={isActive ? "active" : ""}
+                title={label}
+                aria-label={label}
+              >
+                <Icon name={icon} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-bottom">
-          <button className="settings">
-            <Icon name="settings" />
-            <span>Settings</span>
-          </button>
-
-          <div className="mini-profile">
-            <div className="avatar avatar-you">A</div>
+          <div
+            className="mini-profile"
+            onClick={() => {
+              setSelectedUser(currentUser._id || currentUser.id);
+              setCurrentPage("profile");
+              setActive("");
+            }}
+            style={{ cursor: "pointer" }}
+            title="View Profile"
+          >
+            <UserAvatar
+              user={currentUser}
+              className="avatar avatar-you"
+              size={39}
+            />
 
             <div>
               <strong>{currentUser.name}</strong>
-              <span>{currentUser.role}</span>
+              <span>{currentUser.role || "student"}</span>
             </div>
           </div>
-
-          <Icon name="chevron" size={16} />
 
           <button className="settings logout-button" onClick={logout}>
             <Icon name="logout" />
@@ -1349,62 +1566,135 @@ function App() {
       {/* MAIN */}
 
       <main id="top" className="main-content">
-        <header className="topbar">
-          <label className="search">
-            <Icon name="search" size={19} />
+        {currentPage === "home" && (
+          <header className="topbar">
+            <label className="search">
+              <Icon name="search" size={19} />
 
-            <input
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setProfileUser(null);
-                setSelectedUser(null);
-              }}
-              placeholder="Search posts..."
-            />
-          </label>
+              <input
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setProfileUser(null);
+                  setSelectedUser(null);
+                }}
+                placeholder="Search posts..."
+              />
+            </label>
 
-          <div className="top-actions">
-            <button
-              className="icon-button notification"
-              aria-label="Notifications"
-            >
-              <Icon name="bell" />
-              <i />
-            </button>
+            <div className="top-actions">
+              <div className="notif-wrapper">
+                <button
+                  type="button"
+                  className={`icon-button notification ${isNotificationsOpen ? "active" : ""}`}
+                  aria-label="Notifications"
+                  onClick={() => {
+                    setIsNotificationsOpen((prev) => !prev);
+                    if (!isNotificationsOpen) {
+                      fetchNotifications();
+                    }
+                  }}
+                >
+                  <Icon name="bell" />
+                  {unreadCount > 0 ? (
+                    <span className="notif-badge">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
 
-            <button className="create-button">
-              <Icon name="plus" size={18} />
-              <span>Create</span>
-            </button>
-          </div>
-        </header>
+                <NotificationPanel
+                  isOpen={isNotificationsOpen}
+                  onClose={() => setIsNotificationsOpen(false)}
+                  notifications={notifications}
+                  unreadCount={unreadCount}
+                  loading={loadingNotifications}
+                  onMarkAsRead={handleMarkAsRead}
+                  onMarkAllAsRead={handleMarkAllAsRead}
+                  onDeleteNotification={handleDeleteNotification}
+                  onNavigate={handleNotificationNavigate}
+                />
+              </div>
+
+              <button
+                className="create-button"
+                onClick={() => {
+                  const composer =
+                    document.querySelector(".composer-title") ||
+                    document.querySelector(".composer textarea");
+                  composer?.focus();
+                  composer?.scrollIntoView({ behavior: "smooth" });
+                }}
+              >
+                <Icon name="plus" size={18} />
+                <span>Create</span>
+              </button>
+            </div>
+          </header>
+        )}
 
         {currentPage === "chat" ? (
           <ChatPage
             chatUser={chatUser || profileUser}
             currentUser={currentUser}
             onBack={() => {
-              setCurrentPage("profile");
+              setCurrentPage(chatReturnPage || "messages");
             }}
           />
-        ) : currentPage === "profile" ? (
+        ) : currentPage === "profile" || (selectedUser && profileUser) ? (
           <ProfilePage
-            profileUser={profileUser}
+            profileUser={profileUser || (selectedUser === (currentUser?._id || currentUser?.id) ? currentUser : null)}
+            currentUser={currentUser}
             posts={posts}
             getImageSource={getImageSource}
             onBack={() => {
               setCurrentPage("home");
+              setActive("Home");
               setSelectedUser(null);
               setProfileUser(null);
               setChatUser(null);
             }}
             onMessage={(userToChat) => {
               setChatUser(userToChat || profileUser);
+              setChatReturnPage("profile");
               setCurrentPage("chat");
             }}
+            onUpdateUser={(updatedUser) => {
+              setProfileUser(updatedUser);
+              setSession((prev) => {
+                if (!prev) return prev;
+                const nextUser = { ...prev.user, ...updatedUser };
+                localStorage.setItem("user", JSON.stringify(nextUser));
+                return { ...prev, user: nextUser };
+              });
+            }}
           />
-        ) : currentPage === "communities" || active === "Communities" ? (
+        ) : currentPage === "messages" ? (
+          <MessagesPage
+            onSelectConversation={(user) => {
+              setChatUser(user);
+              setChatReturnPage("messages");
+              setCurrentPage("chat");
+            }}
+            onBackToHome={() => {
+              setCurrentPage("home");
+              setActive("Home");
+            }}
+          />
+        ) : currentPage === "lostfound" ? (
+          <LostFoundPage
+            currentUser={currentUser}
+            onContactPoster={(poster) => {
+              setChatUser(poster);
+              setChatReturnPage("lostfound");
+              setCurrentPage("chat");
+            }}
+            onBack={() => {
+              setCurrentPage("home");
+              setActive("Home");
+            }}
+          />
+        ) : currentPage === "communities" ? (
           <CommunitiesPage
             currentUser={currentUser}
             PostComponent={Post}
@@ -1417,7 +1707,7 @@ function App() {
               setActive("Home");
             }}
           />
-        ) : currentPage === "events" || active === "Events" ? (
+        ) : currentPage === "events" ? (
           <EventsPage
             currentUser={currentUser}
             onAuthorClick={(userId) => {
@@ -1427,6 +1717,70 @@ function App() {
             onBack={() => {
               setCurrentPage("home");
               setActive("Home");
+            }}
+          />
+        ) : currentPage === "saved" ? (
+          <section className="feed">
+            <div className="saved-posts-section">
+              <div className="feed-heading">
+                <div>
+                  <p className="eyebrow">YOUR COLLECTION</p>
+                  <h1>Saved Posts <span>✦</span></h1>
+                  <p className="subheading">
+                    Posts you've bookmarked for later.
+                  </p>
+                </div>
+              </div>
+
+              {loadingSavedPosts ? (
+                <p style={{ color: "#7a758d", padding: "20px 0" }}>Loading saved posts...</p>
+              ) : savedPosts.length > 0 ? (
+                savedPosts.map((post) => (
+                  <Post
+                    key={post._id}
+                    post={post}
+                    onAuthorClick={(userId) => {
+                      setSelectedUser(userId);
+                      setCurrentPage("profile");
+                    }}
+                  />
+                ))
+              ) : (
+                <div className="empty-saved-posts">
+                  <Icon name="bookmark" size={32} />
+                  <h3>No saved posts yet</h3>
+                  <p>Save a post and it'll appear here.</p>
+                </div>
+              )}
+            </div>
+          </section>
+        ) : currentPage === "settings" ? (
+          <SettingsPage
+            currentUser={currentUser}
+            onNavigateToProfile={() => {
+              setSelectedUser(currentUser?._id || currentUser?.id);
+              setCurrentPage("profile");
+              setActive("");
+            }}
+            onOpenNotifications={() => {
+              setIsNotificationsOpen(true);
+              fetchNotifications();
+            }}
+            onLogout={logout}
+            onAccountDeleted={() => {
+              logout();
+            }}
+          />
+        ) : currentPage === "admin" ? (
+          <AdminDashboardPage
+            currentUser={currentUser}
+            onBackToHome={() => {
+              setCurrentPage("home");
+              setActive("Home");
+            }}
+            onNavigateToProfile={(userId) => {
+              setSelectedUser(userId);
+              setCurrentPage("profile");
             }}
           />
         ) : (
@@ -1466,9 +1820,11 @@ function App() {
                             setCurrentPage("profile");
                           }}
                         >
-                          <div className="person-avatar">
-                            {user.name?.charAt(0).toUpperCase()}
-                          </div>
+                          <UserAvatar
+                            user={user}
+                            className="person-avatar"
+                            size={46}
+                          />
 
                           <div className="person-info">
                             <strong>{user.name}</strong>
@@ -1498,7 +1854,7 @@ function App() {
                 <div>
                   <p className="eyebrow">STUDENT COMMUNITY</p>
                   <h1>
-                    Good afternoon, {currentUser.name.split(" ")[0]} <span>✦</span>
+                    {getIndiaGreeting()}, {currentUser.name.split(" ")[0]} <span>✦</span>
                   </h1>
                   <p className="subheading">
                     Here's what's happening around your campus.
@@ -1514,7 +1870,11 @@ function App() {
             {/* COMPOSER */}
             {!searchQuery.trim() && (
               <section className="composer">
-                <div className="avatar avatar-you">A</div>
+                <UserAvatar
+                  user={currentUser}
+                  className="avatar avatar-you"
+                  size={39}
+                />
 
                 <div className="composer-body">
                   <input
@@ -1694,123 +2054,6 @@ function App() {
         )}
 
       </main>
-
-      {/* RIGHT SIDEBAR */}
-
-      <aside className="rightbar">
-        <section className="right-card campus-card">
-          <div className="campus-orbit">
-            <span>✦</span>
-          </div>
-
-          <small>YOUR CAMPUS</small>
-
-          <h2>CampusConnect</h2>
-
-          <p>Student Community</p>
-
-          <button>
-            Campus hub
-            <Icon name="arrow" size={15} />
-          </button>
-        </section>
-
-        <section className="right-section">
-          <div className="section-title">
-            <h2>Trending now</h2>
-            <button>See all</button>
-          </div>
-
-          <div className="trends">
-            {[
-              ["01", "Hackathon 2026", "Students talking"],
-              ["02", "Campus Events", "Students talking"],
-              ["03", "Placement prep", "Students talking"],
-            ].map(([n, title, sub]) => (
-              <a key={n} href={`#${n}`}>
-                <b>{n}</b>
-
-                <div>
-                  <strong>{title}</strong>
-                  <span>{sub}</span>
-                </div>
-
-                <Icon name="chevron" size={16} />
-              </a>
-            ))}
-          </div>
-        </section>
-
-        <section className="right-section communities">
-          <div className="section-title">
-            <h2>Your communities</h2>
-            <button
-              onClick={() => {
-                setActive("Communities");
-                setCurrentPage("communities");
-                setProfileUser(null);
-                setSelectedUser(null);
-              }}
-            >
-              Explore
-            </button>
-          </div>
-
-          <a
-            href="#communities"
-            onClick={(e) => {
-              e.preventDefault();
-              setActive("Communities");
-              setCurrentPage("communities");
-            }}
-          >
-            <span className="community-icon design-icon">💻</span>
-
-            <div>
-              <strong>Coding Club</strong>
-              <small>Club • Active</small>
-            </div>
-
-            <span className="unread">3</span>
-          </a>
-
-          <a
-            href="#communities"
-            onClick={(e) => {
-              e.preventDefault();
-              setActive("Communities");
-              setCurrentPage("communities");
-            }}
-          >
-            <span className="community-icon tech-icon">
-              🎓
-            </span>
-
-            <div>
-              <strong>BCA Tech Circle</strong>
-              <small>Course • Active</small>
-            </div>
-
-            <span className="unread">2</span>
-          </a>
-
-          <a
-            href="#communities"
-            onClick={(e) => {
-              e.preventDefault();
-              setActive("Communities");
-              setCurrentPage("communities");
-            }}
-          >
-            <span className="community-icon entre-icon">🚀</span>
-
-            <div>
-              <strong>Placement Prep Hub</strong>
-              <small>Interest • Active</small>
-            </div>
-          </a>
-        </section>
-      </aside>
     </div>
   );
 }

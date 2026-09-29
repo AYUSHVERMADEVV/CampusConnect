@@ -1,4 +1,5 @@
 const Event = require("../models/Event");
+const { createNotification } = require("./notificationController");
 
 const VALID_CATEGORIES = [
   "Hackathon",
@@ -77,12 +78,16 @@ const getEvents = async (req, res) => {
 
       const organizerId = (eventObj.organizer?._id || eventObj.organizer)?.toString();
       const isOrganizer = Boolean(currentUserId && organizerId === currentUserId);
+      const canDelete = Boolean(
+        currentUserId && (isOrganizer || req.user?.role === "admin")
+      );
 
       return {
         ...eventObj,
         attendeesCount: attendees.length,
         isAttending,
         isOrganizer,
+        canDelete,
       };
     });
 
@@ -127,6 +132,9 @@ const getSingleEvent = async (req, res) => {
       typeof event.toObject === "function" ? event.toObject() : { ...event };
     const organizerId = (eventObj.organizer?._id || eventObj.organizer)?.toString();
     const isOrganizer = Boolean(currentUserId && organizerId === currentUserId);
+    const canDelete = Boolean(
+      currentUserId && (isOrganizer || req.user?.role === "admin")
+    );
 
     res.status(200).json({
       event: {
@@ -134,10 +142,12 @@ const getSingleEvent = async (req, res) => {
         attendeesCount: attendees.length,
         isAttending,
         isOrganizer,
+        canDelete,
       },
       isAttending,
       attendeesCount: attendees.length,
       isOrganizer,
+      canDelete,
     });
   } catch (error) {
     console.error("Get Single Event Error:", error);
@@ -318,6 +328,15 @@ const rsvpEvent = async (req, res) => {
     event.attendees.push(userId);
     await event.save();
 
+    if (event.organizer) {
+      createNotification({
+        recipient: event.organizer,
+        sender: userId,
+        type: "event",
+        event: event._id,
+      }).catch((err) => console.error("Notification event error:", err.message));
+    }
+
     res.status(200).json({
       message: "RSVP successful! You are now attending this event.",
       isAttending: true,
@@ -430,7 +449,7 @@ const deleteEvent = async (req, res) => {
 
     if (organizerId !== userId && req.user.role !== "admin") {
       return res.status(403).json({
-        message: "You are not authorized to delete this event. Only the organizer can delete it.",
+        message: "You are not authorized to delete this event. Only the organizer or an admin can delete it.",
       });
     }
 
